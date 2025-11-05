@@ -1,0 +1,84 @@
+<!-- src/templates/payslip.ejs -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Payslip - <%= worker.employeeNo %> - <%= month %></title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .logo { width: 150px; height: auto; }
+    .company { text-align: right; }
+    .company h2 { margin: 0; color: #333; }
+    .payslip-details { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+    .section { border: 1px solid #ddd; padding: 15px; }
+    .section h3 { margin-top: 0; color: #333; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background-color: #f2f2f2; font-weight: bold; }
+    .total { font-weight: bold; font-size: 1.1em; text-align: right; }
+    .qr-signature { display: flex; justify-content: space-between; margin-top: 30px; }
+    .qr { text-align: center; }
+    .signature { text-align: right; width: 200px; height: 50px; background: #f9f9f9; border: 1px solid #ddd; }
+    .footer { margin-top: 40px; text-align: center; font-size: 0.9em; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="<%= companyLogo %>" alt="Company Logo" class="logo">
+    <div class="company">
+      <h2><%= companyName %></h2>
+      <p>Payslip for <%= month %></p>
+    </div>
+  </div>
+
+  <div class="payslip-details">
+    <div class="section">
+      <h3>Employee Details</h3>
+      <p><strong>Name:</strong> <%= worker.firstName %> <%= worker.lastName %></p>
+      <p><strong>ID:</strong> <%= worker.employeeNo %></p>
+      <p><strong>Site:</strong> <%= site.siteRefName %> (<%= site.clientName %>)</p>
+    </div>
+    <div class="section">
+      <h3>Period</h3>
+      <p><strong>Month:</strong> <%= month %></p>
+      <p><strong>Working Days:</strong> <%= workingDays %></p>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Amount (AED)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Basic Salary</td><td class="total"><%= worker.basicSalary.toFixed(2) %></td></tr>
+      <tr><td>Allowance</td><td class="total"><%= worker.allowance.toFixed(2) %></td></tr>
+      <tr><td>Total Salary</td><td class="total"><%= totalSalary.toFixed(2) %></td></tr>
+      <tr><td>Overtime Hours</td><td><%= otHr.toFixed(2) %> hrs @ <%= otAedPerHr.toFixed(2) %>/hr</td></tr>
+      <tr><td>Total OT AED</td><td class="total"><%= totalOtAed.toFixed(2) %></td></tr>
+      <tr><td>Absent Days</td><td><%= absent %> days @ <%= perDayAed.toFixed(2) %>/day</td></tr>
+      <tr><td>Absent Deduction</td><td class="total">-<%= absentDeduction.toFixed(2) %></td></tr>
+      <tr><td>Advance</td><td class="total">-<%= worker.advance.toFixed(2) %></td></tr>
+      <tr><td><strong>Net Payable</strong></td><td class="total"><%= totalSalaryPayable.toFixed(2) %></td></tr>
+    </tbody>
+  </table>
+
+  <div class="qr-signature">
+    <div class="qr">
+      <img src="<%= qrCode %>" alt="QR Code">
+      <p>Scan for details</p>
+    </div>
+    <div class="signature">
+      <img src="<%= signature %>" alt="Signature">
+      <p>Authorized Signature</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>Generated on <%= new Date().toLocaleDateString() %> | Confidential</p>
+  </div>
+</body>
+</html>
