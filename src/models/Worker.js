@@ -21,7 +21,6 @@ const workerSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes
-workerSchema.index({ employeeNo: 1 });
 workerSchema.index({ firstName: 1, lastName: 1 });
 
 module.exports = mongoose.model('Worker', workerSchema);
