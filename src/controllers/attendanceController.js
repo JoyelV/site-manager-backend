@@ -43,4 +43,41 @@ const createAttendance = async (req, res) => {
   }
 };
 
-module.exports = { getAttendance, createAttendance };
+const getAttendanceByDate = async (req, res) => {
+  try {
+    const { date } = req.params; // YYYY-MM-DD
+
+    const attendance = await Attendance.find({ date })
+      .populate('worker', 'firstName lastName employeeNo')
+      .select('worker present otHours');
+
+    res.json(attendance);
+  } catch (err) {
+    console.error('Error fetching attendance by date:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+// GET /api/attendance/range?start=YYYY-MM-DD&end=YYYY-MM-DD
+const getAttendanceRange = async (req, res) => {
+  try {
+    const { start, end } = req.query;
+
+    if (!start || !end) {
+      return res.status(400).json({ msg: 'start and end dates are required' });
+    }
+
+    const attendance = await Attendance.find({
+      date: { $gte: start, $lte: end },
+    })
+      .populate('worker', 'firstName lastName employeeNo')
+      .select('worker present date');
+
+    res.json(attendance);
+  } catch (err) {
+    console.error('Error fetching attendance range:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+module.exports = { getAttendance, createAttendance, getAttendanceByDate, getAttendanceRange };
