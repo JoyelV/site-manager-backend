@@ -5,11 +5,13 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   refreshTokens: [
-    {
-      token: { type: String, required: true },
-      createdAt: { type: Date, default: Date.now },
-    },
+    { token: String, createdAt: { type: Date, default: Date.now } },
   ],
+  // ──────────────────────────────────────
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
+  resetOtp: String,
+  resetOtpExpires: Date,
 });
 
 userSchema.pre('save', async function (next) {

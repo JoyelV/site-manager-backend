@@ -1,6 +1,109 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { sendOtpEmail } = require('../utils/mailer'); 
+
+// ──────────────────────────────────────
+// 1. Request OTP
+const requestOtp = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.json({ msg: 'If email exists, OTP sent.' });
+    }
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    user.resetOtp = otp;
+    user.resetOtpExpires = Date.now() + 5 * 60 * 1000; // 5 min
+    await user.save();
+
+    await sendOtpEmail(email, otp);
+    res.json({ msg: 'OTP sent to email' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+// ──────────────────────────────────────
+// 2. Verify OTP + Reset Password
+const verifyOtpAndReset = async (req, res) => {
+  const { email, otp, password, confirmPassword } = req.body;
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ msg: 'Passwords do not match' });
+  }
+
+  try {
+    const user = await User.findOne({
+      email,
+      resetOtp: otp,
+      resetOtpExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ msg: 'Invalid or expired OTP' });
+    }
+
+    user.password = password;
+    user.resetOtp = undefined;
+    user.resetOtpExpires = undefined;
+    await user.save();
+
+    res.json({ msg: 'Password reset successful' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+// ──────────────────────────────────────
+// 1. FORGOT PASSWORD – send email
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Don’t reveal if email exists
+      return res.json({ msg: 'If the email exists, a reset link has been sent.' });
+    }
+
+    // Generate 32‑byte token & 15‑min expiry
+    const token = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; // 15 min
+    await user.save();
+
+    await sendResetEmail(email, token);
+    res.json({ msg: 'If the email exists, a reset link has been sent.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+// ──────────────────────────────────────
+// 2. RESET PASSWORD – verify token & update
+const resetPassword = async (req, res) => {
+  const { token, password } = req.body;
+  try {
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) return res.status(400).json({ msg: 'Invalid or expired token' });
+
+    user.password = password;               // pre‑save hook hashes it
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ msg: 'Password updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
 
 // ------------------------------------------------------------------
 // Helper: Access token (1 h)
@@ -111,4 +214,12 @@ const refreshToken = async (req, res) => {
   res.json({ accessToken });
 };
 
-module.exports = { signup, login, refreshToken };
+module.exports = {
+  signup,
+  login,
+  refreshToken,
+  forgotPassword,
+  resetPassword,  
+  requestOtp,
+  verifyOtpAndReset
+};
