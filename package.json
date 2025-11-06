@@ -15,6 +15,7 @@
   "dependencies": {
     "@sparticuz/chromium": "^123.0.1",
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "ejs": "^3.1.10",

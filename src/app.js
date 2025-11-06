@@ -1,10 +1,12 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 
 dotenv.config();
 const app = express();
+app.use(cookieParser());
 
 // CORS for Vercel frontend
 app.use(cors({
