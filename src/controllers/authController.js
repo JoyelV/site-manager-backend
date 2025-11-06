@@ -143,37 +143,6 @@ const verifyRefreshToken = async (refreshToken) => {
 };
 
 // ------------------------------------------------------------------
-// SIGNUP
-const signup = async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    if (await User.findOne({ email })) {
-      return res.status(400).json({ msg: 'User exists' });
-    }
-
-    const user = new User({ email, password });
-    await user.save();
-
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken();
-
-    // httpOnly cookie (secure in prod)
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    await storeRefreshToken(user._id, refreshToken);
-
-    res.json({ accessToken });
-  } catch (err) {
-    res.status(500).json({ msg: err.message });
-  }
-};
-
-// ------------------------------------------------------------------
 // LOGIN
 const login = async (req, res) => {
   const { email, password } = req.body;
@@ -215,7 +184,6 @@ const refreshToken = async (req, res) => {
 };
 
 module.exports = {
-  signup,
   login,
   refreshToken,
   forgotPassword,
