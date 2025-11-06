@@ -10,7 +10,7 @@ app.use(cookieParser());
 
 // CORS for Vercel frontend
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:8080',
+  origin: process.env.FRONTEND_URL || 'https://client-eight-rust.vercel.app',
   credentials: true,
 }));
 
