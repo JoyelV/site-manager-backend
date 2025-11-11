@@ -1,83 +1,70 @@
-const Attendance = require('../models/Attendance');
+const DailyAttendance = require('../models/Attendance');
 
-const getAttendance = async (req, res) => {
+/* ---------- CREATE / UPDATE DAILY RECORD ---------- */
+const upsertDaily = async (req, res) => {
   try {
-    const { month } = req.query;
-    const filter = month ? { month } : {};
-    
-    const attendance = await Attendance.find(filter)
-      .populate('worker', 'firstName lastName employeeNo')
-      .populate('site', 'siteRefName')
-      .sort({ date: -1 });
+    const { worker, site, date, status, workingHours, otHours } = req.body;
+    const isoDate = new Date(date);
+    isoDate.setUTCHours(0, 0, 0, 0);
 
-    res.json(attendance);
-  } catch (err) {
-    console.error('Get Attendance Error:', err);
-    res.status(500).json({ msg: 'Server error' });
-  }
-};
-
-const createAttendance = async (req, res) => {
-  try {
-    const { worker, site, date, workingDays, otHours, absentDays, month } = req.body;
-
-    // Optional: Prevent duplicate for same worker + site + month
-    const existing = await Attendance.findOne({ worker, site, month });
-    if (existing) {
-      return res.status(400).json({ msg: 'Attendance already recorded for this worker and site in this month' });
-    }
-
-    const attendance = new Attendance({
-      worker, site, date, workingDays, otHours, absentDays, month
-    });
-    await attendance.save();
-
-    const populated = await Attendance.findById(attendance._id)
+    const record = await DailyAttendance.findOneAndUpdate(
+      { worker, site, date: isoDate },
+      { status, workingHours, otHours },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
       .populate('worker', 'firstName lastName employeeNo')
       .populate('site', 'siteRefName');
 
-    res.status(201).json(populated);
+    res.status(record.isNew ? 201 : 200).json(record);
   } catch (err) {
-    console.error('Create Attendance Error:', err);
+    console.error(err);
     res.status(400).json({ msg: err.message });
   }
 };
 
-const getAttendanceByDate = async (req, res) => {
+/* ---------- GET BY DATE ---------- */
+// controllers/attendanceController.js
+const getByDate = async (req, res) => {
   try {
-    const { date } = req.params; // YYYY-MM-DD
-
-    const attendance = await Attendance.find({ date })
-      .populate('worker', 'firstName lastName employeeNo')
-      .select('worker present otHours');
-
-    res.json(attendance);
-  } catch (err) {
-    console.error('Error fetching attendance by date:', err);
-    res.status(500).json({ msg: 'Server error' });
-  }
-};
-
-// GET /api/attendance/range?start=YYYY-MM-DD&end=YYYY-MM-DD
-const getAttendanceRange = async (req, res) => {
-  try {
-    const { start, end } = req.query;
-
-    if (!start || !end) {
-      return res.status(400).json({ msg: 'start and end dates are required' });
+    const { date } = req.params;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ msg: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
-    const attendance = await Attendance.find({
-      date: { $gte: start, $lte: end },
-    })
-      .populate('worker', 'firstName lastName employeeNo')
-      .select('worker present date');
+    const iso = new Date(date + 'T00:00:00.000Z');
+    if (isNaN(iso.getTime())) {
+      return res.status(400).json({ msg: 'Invalid date' });
+    }
 
-    res.json(attendance);
+    const records = await DailyAttendance.find({ date: iso })
+      .populate('worker', 'firstName lastName employeeNo')
+      .populate('site', 'siteRefName')
+      .select('worker site status workingHours otHours');
+
+    res.json(records);
   } catch (err) {
-    console.error('Error fetching attendance range:', err);
+    console.error(err);
     res.status(500).json({ msg: 'Server error' });
   }
 };
 
-module.exports = { getAttendance, createAttendance, getAttendanceByDate, getAttendanceRange };
+/* ---------- GET RANGE ---------- */
+const getRange = async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ msg: 'start & end required' });
+
+    const records = await DailyAttendance.find({
+      date: { $gte: new Date(start), $lte: new Date(end) },
+    })
+      .populate('worker', 'firstName lastName employeeNo')
+      .select('worker date status workingHours otHours');
+
+    res.json(records);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+module.exports = { upsertDaily, getByDate, getRange };

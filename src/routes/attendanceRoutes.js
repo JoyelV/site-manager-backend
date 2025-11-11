@@ -1,19 +1,15 @@
 const express = require('express');
-const { getAttendance, createAttendance,getAttendanceByDate,getAttendanceRange } = require('../controllers/attendanceController');
+const { upsertDaily, getByDate, getRange } = require('../controllers/attendanceController');
+
 const protect = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 router.use(protect);
 
-router.route('/')
-  .get(getAttendance)
-  .post(createAttendance);
-
-// GET /api/attendance/date/:date
-router.get('/date/:date', getAttendanceByDate);
-
-// GET /api/attendance/range
-router.get('/range', getAttendanceRange);
+// routes/attendanceRoutes.js
+router.post('/daily', upsertDaily);
+router.get('/daily/:date', getByDate);
+router.get('/daily/range', getRange);
 
 module.exports = router;

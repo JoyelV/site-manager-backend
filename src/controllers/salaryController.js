@@ -1,45 +1,87 @@
-const Attendance = require('../models/Attendance');
+const DailyAttendance = require('../models/Attendance');
 
 const getSalaryReport = async (req, res) => {
   try {
-    const { month } = req.query;
+    const { month } = req.query; // "2025-09"
     if (!month) return res.status(400).json({ msg: 'Month required' });
 
-    const attendanceRecords = await Attendance.find({ month })
-      .populate('worker', 'firstName lastName employeeNo basicSalary allowance advance')
-      .populate('site', 'siteRefName');
+    const [year, mon] = month.split('-').map(Number);
+    const start = new Date(Date.UTC(year, mon - 1, 1));
+    const end = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999));
 
-    const records = attendanceRecords.map((att) => {
-      const w = att.worker;
+    // Aggregate per worker-site
+    const agg = await DailyAttendance.aggregate([
+      { $match: { date: { $gte: start, $lte: end } } },
+      {
+        $group: {
+          _id: { worker: '$worker', site: '$site' },
+          totalDays: { $sum: '$status' },           // 0.5 or 1
+          totalHours: { $sum: '$workingHours' },
+          totalOT: { $sum: '$otHours' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'workers',
+          localField: '_id.worker',
+          foreignField: '_id',
+          as: 'w',
+        },
+      },
+      { $unwind: '$w' },
+      {
+        $lookup: {
+          from: 'sites',
+          localField: '_id.site',
+          foreignField: '_id',
+          as: 's',
+        },
+      },
+      { $unwind: '$s' },
+      {
+        $project: {
+          _id: 0,
+          worker: '$w',
+          site: '$s',
+          totalDays: 1,
+          totalHours: 1,
+          totalOT: 1,
+        },
+      },
+    ]);
+
+    const normalHoursPerMonth = 208; // 26 days × 8 h
+    const records = agg.map((a) => {
+      const w = a.worker;
       const totalSalary = w.basicSalary + w.allowance;
-      const normalHours = 208;
-      const totalHours = att.workingDays * 8 + att.otHours;
-      const otHours = Math.max(0, totalHours - normalHours);
-      const hourlyRate = totalSalary / normalHours;
-      const otRate = hourlyRate * 1.5;
-      const totalOtAed = otHours * otRate;
-      const perDayAed = totalSalary / 30;
-      const absentDeduction = att.absentDays * perDayAed;
-      const totalPayable = totalSalary + totalOtAed - absentDeduction - (w.advance || 0);
+      const totalHours = a.totalHours + a.totalOT;
+      const otHours = Math.max(0, totalHours - normalHoursPerMonth);
+      const hourly = totalSalary / normalHoursPerMonth;
+      const otRate = hourly * 1.5;
+      const otAed = otHours * otRate;
+      const perDay = totalSalary / 30;
+      const absentDays = 30 - a.totalDays;
+      const absentDeduction = absentDays * perDay;
+      const payable = totalSalary + otAed - absentDeduction - (w.advance || 0);
 
       return {
-        _id: att._id,
+        _id: `${a.worker._id}-${a.site._id}`,
         givenName: w.firstName,
         surname: w.lastName,
         employNo: w.employeeNo,
         basicSalary: w.basicSalary,
         allowance: w.allowance,
         totalSalary,
-        totalHrInclOT: totalHours,
-        normalHrExcOT: normalHours,
-        otHr: otHours,
-        absent: att.absentDays,
-        otAedPerHr: Number(otRate.toFixed(2)),
-        totalOtAed: Number(totalOtAed.toFixed(2)),
-        perDayAed: Number(perDayAed.toFixed(2)),
-        absentDeduction: Number(absentDeduction.toFixed(2)),
+        totalHrInclOT: Math.round(totalHours),
+        normalHrExcOT: normalHoursPerMonth,
+        otHr: Math.round(otHours),
+        absent: absentDays,
+        otAedPerHr: +otRate.toFixed(2),
+        totalOtAed: +otAed.toFixed(2),
+        perDayAed: +perDay.toFixed(2),
+        absentDeduction: +absentDeduction.toFixed(2),
         advance: w.advance || 0,
-        totalSalaryPayable: Number(totalPayable.toFixed(2)),
+        totalSalaryPayable: +payable.toFixed(2),
       };
     });
 
@@ -54,7 +96,7 @@ const getSalaryReport = async (req, res) => {
 
     res.json({ month, records, totals });
   } catch (err) {
-    console.error('Salary Report Error:', err);
+    console.error(err);
     res.status(500).json({ msg: 'Server error' });
   }
 };
