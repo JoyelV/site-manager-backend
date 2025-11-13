@@ -1,7 +1,7 @@
 const Worker = require('../models/Worker');
 const { sendExpiryReminderEmail } = require('../utils/emailService');
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ADMIN_EMAIL=varghesejoyel71@gmail.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'varghesejoyel71@gmail.com';
 
 const getWorkers = async (req, res) => {
   try {
