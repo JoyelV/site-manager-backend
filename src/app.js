@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
+require('./cron/expiryCron'); 
 
 dotenv.config();
 const app = express();
