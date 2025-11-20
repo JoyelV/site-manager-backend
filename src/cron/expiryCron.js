@@ -1,48 +1,56 @@
-const cron = require('node-cron');
-const Worker = require('../models/Worker');
-const { sendExpiryReminderEmail } = require('../utils/emailService');
+const cron = require("node-cron");
+const Worker = require("../models/Worker");
+const { sendExpiryReminderEmail } = require("../utils/emailService");
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'varghesejoyel71@gmail.com';
+const EXPIRY_THRESHOLD_DAYS = 30;
 
-cron.schedule('0 8 * * *', async () => {   
-  // Runs every day at 8 AM
-  console.log('Running document expiry checker...');
-
+const checkExpiry = (expDate) => {
+  if (!expDate) return false;
   const today = new Date();
-  const upcomingThreshold = new Date();
-  upcomingThreshold.setDate(today.getDate() + 30);
+  const expiry = new Date(expDate);
+  const diff = (expiry - today) / (1000 * 60 * 60 * 24);
+  return diff <= EXPIRY_THRESHOLD_DAYS;
+};
 
-  const workers = await Worker.find();
+const startExpiryCron = () => {
+  const task = cron.schedule("40 23 * * *", async () => {
+    console.log("📅 Running nightly expiry check at 23:30 IST / 18:30 UTC...");
 
-  const expiredWorkers = [];
+    try {
+      const workers = await Worker.find();
+      const expiredWorkers = [];
 
-  for (const w of workers) {
-    const expiredDocs = [];
+      workers.forEach((w) => {
+        const expiredDocs = [];
 
-    if (w.passportExpDate && new Date(w.passportExpDate) <= upcomingThreshold) {
-      expiredDocs.push(`Passport Expiry: ${new Date(w.passportExpDate).toDateString()}`);
-    }
-    if (w.visaExpDate && new Date(w.visaExpDate) <= upcomingThreshold) {
-      expiredDocs.push(`Visa Expiry: ${new Date(w.visaExpDate).toDateString()}`);
-    }
-    if (w.emiratesIdExpDate && new Date(w.emiratesIdExpDate) <= upcomingThreshold) {
-      expiredDocs.push(`Emirates ID Expiry: ${new Date(w.emiratesIdExpDate).toDateString()}`);
-    }
+        if (checkExpiry(w.visaExpDate)) expiredDocs.push(`Visa expiring on ${w.visaExpDate}`);
+        if (checkExpiry(w.laborCardExpDate)) expiredDocs.push(`Labor Card expiring on ${w.laborCardExpDate}`);
+        if (checkExpiry(w.emiratesIdExpDate)) expiredDocs.push(`Emirates ID expiring on ${w.emiratesIdExpDate}`);
+        if (checkExpiry(w.passportExpDate)) expiredDocs.push(`Passport expiring on ${w.passportExpDate}`);
 
-    if (expiredDocs.length > 0) {
-      expiredWorkers.push({
-        firstName: w.firstName,
-        lastName: w.lastName,
-        employeeNo: w.employeeNo,
-        expiredDocs,
+        if (expiredDocs.length > 0) {
+          expiredWorkers.push({
+            firstName: w.firstName,
+            lastName: w.lastName,
+            employeeNo: w.employeeNo,
+            expiredDocs,
+          });
+        }
       });
-    }
-  }
 
-  if (expiredWorkers.length > 0) {
-    await sendExpiryReminderEmail(ADMIN_EMAIL, expiredWorkers);
-    console.log("Expiry email sent.");
-  } else {
-    console.log("No expiring documents found.");
-  }
-});
+      if (expiredWorkers.length > 0) {
+        await sendExpiryReminderEmail(process.env.ADMIN_EMAIL, expiredWorkers);
+        console.log("📧 Expiry reminder email sent.");
+      } else {
+        console.log("✅ No expired documents today.");
+      }
+    } catch (err) {
+      console.error("Cron Job Error:", err);
+    }
+  }, { scheduled: true });
+
+  console.log("⏱️ Expiry cron scheduled: Runs every day at 23:40 IST (40 23 * * * UTC)");
+  return task;
+};
+
+module.exports = { startExpiryCron };

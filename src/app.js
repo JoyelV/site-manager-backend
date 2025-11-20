@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
-require('./cron/expiryCron'); 
+const { startExpiryCron } = require('./cron/expiryCron');
 
 dotenv.config();
 const app = express();
@@ -36,9 +36,11 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Start server only after DB connects
 connectDB()
   .then(() => {
+    // start cron after DB is ready
+    startExpiryCron();
+
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
