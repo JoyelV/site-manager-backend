@@ -6,6 +6,10 @@ const connectDB = require('./config/db');
 const { startExpiryCron } = require('./cron/expiryCron');
 
 dotenv.config();
+
+console.log("SMTP_USER:", process.env.SMTP_USER);
+console.log("ADMIN_EMAIL:", process.env.ADMIN_EMAIL);
+
 const app = express();
 app.use(cookieParser());
 
@@ -25,7 +29,7 @@ app.use('/api/workers', require('./routes/workerRoutes'));
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/salary', require('./routes/salaryRoutes'));
 
-// Health check
+app.use('/api', require('./routes/testEmailRoute'));   
 app.get('/', (req, res) => res.json({ message: 'API Running' }));
 
 // Error handler
