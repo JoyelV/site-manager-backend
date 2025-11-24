@@ -4,7 +4,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const { startExpiryCron } = require('./cron/expiryCron');
-
+const { sendOtpEmail } = require('./utils/mailer');
 dotenv.config();
 
 console.log("SMTP_USER:", process.env.SMTP_USER);
@@ -31,6 +31,12 @@ app.use('/api/salary', require('./routes/salaryRoutes'));
 
 app.use('/api', require('./routes/ping'));   
 app.get('/', (req, res) => res.json({ message: 'API Running' }));
+
+app.get("/test-email", async (req, res) => {
+  await sendOtpEmail("varghesejoyel71@gmail.com", "123456");
+  res.send("Test email sent");
+});
+
 
 // Error handler
 app.use((err, req, res, next) => {
