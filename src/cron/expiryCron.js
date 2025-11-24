@@ -1,6 +1,6 @@
 const cron = require("node-cron");
 const Worker = require("../models/Worker");
-const { sendExpiryReminderEmail } = require("../utils/emailService");
+const { sendExpiryReminderEmail } = require("../utils/emailService").default;
 
 const EXPIRY_THRESHOLD_DAYS = 30; // Alert if expiring in 30 days or less
 const ALREADY_EXPIRED_DAYS = 0;   // Already past expiry
@@ -19,10 +19,10 @@ const formatDate = (date) => {
 };
 
 const startExpiryCron = () => {
-  // Runs every day at 23:40 IST (which is 18:10 UTC) → "10 18 * * *"
-  // Or keep your current: "40 23 * * *" if server is in IST timezone
-  cron.schedule("40 23 * * *", async () => {
-    console.log("Running document expiry check...");
+  // Runs every day at 11:00 PM IST
+  cron.schedule("0 23 * * *", async () => {
+    console.log("Running document expiry check at 11 PM IST...");
+  console.log("[CRON TRIGGERED]", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }));
 
     try {
       const workers = await Worker.find({
@@ -36,8 +36,8 @@ const startExpiryCron = () => {
         "firstName lastName employeeNo visaExpDate laborCardExpDate emiratesIdExpDate passportExpDate"
       );
 
-      const expired = [];      // Already expired
-      const expiringSoon = []; // Will expire in ≤30 days
+      const expired = [];
+      const expiringSoon = [];
 
       workers.forEach((worker) => {
         const docs = [
@@ -51,13 +51,10 @@ const startExpiryCron = () => {
           if (!date) return;
 
           const days = getDaysDifference(date);
-          if (days === null) return;
-
           const formattedDate = formatDate(date);
           const docInfo = `${name} (expires: ${formattedDate})`;
 
           if (days < 0) {
-            // Already expired
             let entry = expired.find(e => e.employeeNo === worker.employeeNo);
             if (!entry) {
               entry = {
@@ -71,7 +68,6 @@ const startExpiryCron = () => {
             entry.docs.push(docInfo);
             entry.overdueDays.push(Math.abs(days));
           } else if (days <= EXPIRY_THRESHOLD_DAYS) {
-            // Expiring soon
             let entry = expiringSoon.find(e => e.employeeNo === worker.employeeNo);
             if (!entry) {
               entry = {
@@ -88,13 +84,12 @@ const startExpiryCron = () => {
         });
       });
 
-      // Send email if there's anything to report
       if (expired.length > 0 || expiringSoon.length > 0) {
         await sendExpiryReminderEmail(process.env.ADMIN_EMAIL, {
           expired,
           expiringSoon,
         });
-        console.log(`Expiry alert email sent: ${expired.length} expired, ${expiringSoon.length} expiring soon`);
+        console.log(`Expiry alert email sent`);
       } else {
         console.log("No document expiries detected today.");
       }
@@ -103,10 +98,11 @@ const startExpiryCron = () => {
     }
   }, {
     scheduled: true,
-    timezone: "Asia/Dubai", // Recommended: explicit timezone (UAE)
+    timezone: "Asia/Kolkata", // ✔ India standard time
   });
 
-  console.log("Document expiry cron job scheduled daily at 23:40 GST (Dubai time)");
+  console.log("Document expiry cron scheduled daily at 11:00 PM IST");
 };
+
 
 module.exports = { startExpiryCron };
