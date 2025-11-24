@@ -29,7 +29,7 @@ app.use('/api/workers', require('./routes/workerRoutes'));
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/salary', require('./routes/salaryRoutes'));
 
-app.use('/api', require('./routes/testEmailRoute'));   
+app.use('/api', require('./routes/ping'));   
 app.get('/', (req, res) => res.json({ message: 'API Running' }));
 
 // Error handler

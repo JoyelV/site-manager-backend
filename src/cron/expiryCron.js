@@ -1,9 +1,8 @@
 const cron = require("node-cron");
 const Worker = require("../models/Worker");
-const { sendExpiryReminderEmail } = require("../utils/emailService").default;
+const { sendExpiryReminderEmail } = require("../utils/emailService");
 
-const EXPIRY_THRESHOLD_DAYS = 30; // Alert if expiring in 30 days or less
-const ALREADY_EXPIRED_DAYS = 0;   // Already past expiry
+const EXPIRY_THRESHOLD_DAYS = 30;
 
 const getDaysDifference = (date) => {
   if (!date) return null;
@@ -14,95 +13,96 @@ const getDaysDifference = (date) => {
   return Math.floor((exp - today) / (1000 * 60 * 60 * 24));
 };
 
-const formatDate = (date) => {
-  return date ? new Date(date).toLocaleDateString("en-GB") : "N/A";
-};
+const formatDate = (date) =>
+  date ? new Date(date).toLocaleDateString("en-GB") : "N/A";
 
 const startExpiryCron = () => {
-  // Runs every day at 11:00 PM IST
-  cron.schedule("0 23 * * *", async () => {
-    console.log("Running document expiry check at 11 PM IST...");
-  console.log("[CRON TRIGGERED]", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }));
 
-    try {
-      const workers = await Worker.find({
-        $or: [
-          { visaExpDate: { $ne: null } },
-          { laborCardExpDate: { $ne: null } },
-          { emiratesIdExpDate: { $ne: null } },
-          { passportExpDate: { $ne: null } },
-        ],
-      }).select(
-        "firstName lastName employeeNo visaExpDate laborCardExpDate emiratesIdExpDate passportExpDate"
-      );
+  console.log("⏱ Cron job scheduled for 11 PM IST daily...");
 
-      const expired = [];
-      const expiringSoon = [];
+  // RUN EVERYDAY AT 11 PM IST
+  cron.schedule(
+    "0 23 * * *",
+    async () => {
+      console.log("⚡ Cron Triggered at:", new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+      }));
 
-      workers.forEach((worker) => {
-        const docs = [
-          { name: "Visa", date: worker.visaExpDate },
-          { name: "Labor Card", date: worker.laborCardExpDate },
-          { name: "Emirates ID", date: worker.emiratesIdExpDate },
-          { name: "Passport", date: worker.passportExpDate },
-        ];
+      try {
+        const workers = await Worker.find({
+          $or: [
+            { visaExpDate: { $ne: null } },
+            { laborCardExpDate: { $ne: null } },
+            { emiratesIdExpDate: { $ne: null } },
+            { passportExpDate: { $ne: null } },
+          ],
+        }).select(
+          "firstName lastName employeeNo visaExpDate laborCardExpDate emiratesIdExpDate passportExpDate"
+        );
 
-        docs.forEach(({ name, date }) => {
-          if (!date) return;
+        const expired = [];
+        const expiringSoon = [];
 
-          const days = getDaysDifference(date);
-          const formattedDate = formatDate(date);
-          const docInfo = `${name} (expires: ${formattedDate})`;
+        workers.forEach((worker) => {
+          const docs = [
+            { name: "Visa", date: worker.visaExpDate },
+            { name: "Labor Card", date: worker.laborCardExpDate },
+            { name: "Emirates ID", date: worker.emiratesIdExpDate },
+            { name: "Passport", date: worker.passportExpDate },
+          ];
 
-          if (days < 0) {
-            let entry = expired.find(e => e.employeeNo === worker.employeeNo);
-            if (!entry) {
-              entry = {
-                name: `${worker.firstName} ${worker.lastName}`,
-                employeeNo: worker.employeeNo,
-                docs: [],
-                overdueDays: [],
-              };
-              expired.push(entry);
+          docs.forEach(({ name, date }) => {
+            const days = getDaysDifference(date);
+            if (days == null) return;
+
+            const info = `${name} (expires: ${formatDate(date)})`;
+
+            if (days < 0) {
+              // Already expired
+              let entry = expired.find((e) => e.employeeNo === worker.employeeNo);
+              if (!entry) {
+                entry = {
+                  name: `${worker.firstName} ${worker.lastName}`,
+                  employeeNo: worker.employeeNo,
+                  docs: [],
+                };
+                expired.push(entry);
+              }
+              entry.docs.push(info);
+            } else if (days <= EXPIRY_THRESHOLD_DAYS) {
+              // Expiring soon
+              let entry = expiringSoon.find((e) => e.employeeNo === worker.employeeNo);
+              if (!entry) {
+                entry = {
+                  name: `${worker.firstName} ${worker.lastName}`,
+                  employeeNo: worker.employeeNo,
+                  docs: [],
+                };
+                expiringSoon.push(entry);
+              }
+              entry.docs.push(info);
             }
-            entry.docs.push(docInfo);
-            entry.overdueDays.push(Math.abs(days));
-          } else if (days <= EXPIRY_THRESHOLD_DAYS) {
-            let entry = expiringSoon.find(e => e.employeeNo === worker.employeeNo);
-            if (!entry) {
-              entry = {
-                name: `${worker.firstName} ${worker.lastName}`,
-                employeeNo: worker.employeeNo,
-                docs: [],
-                daysLeft: [],
-              };
-              expiringSoon.push(entry);
-            }
-            entry.docs.push(docInfo);
-            entry.daysLeft.push(days);
-          }
+          });
         });
-      });
 
-      if (expired.length > 0 || expiringSoon.length > 0) {
-        await sendExpiryReminderEmail(process.env.ADMIN_EMAIL, {
-          expired,
-          expiringSoon,
-        });
-        console.log(`Expiry alert email sent`);
-      } else {
-        console.log("No document expiries detected today.");
+        if (expired.length > 0 || expiringSoon.length > 0) {
+          await sendExpiryReminderEmail(process.env.ADMIN_EMAIL, {
+            expired,
+            expiringSoon,
+          });
+          console.log("📧 Email sent successfully");
+        } else {
+          console.log("✔ No expiries found today");
+        }
+      } catch (error) {
+        console.error("❌ Cron failed:", error);
       }
-    } catch (err) {
-      console.error("Expiry Cron Job Failed:", err);
+    },
+    {
+      timezone: "Asia/Kolkata",
+      scheduled: true,
     }
-  }, {
-    scheduled: true,
-    timezone: "Asia/Kolkata", // ✔ India standard time
-  });
-
-  console.log("Document expiry cron scheduled daily at 11:00 PM IST");
+  );
 };
-
 
 module.exports = { startExpiryCron };
