@@ -1,10 +1,44 @@
 const Site = require('../models/Site');
 
-// GET /api/sites
 const getSites = async (req, res) => {
   try {
-    const sites = await Site.find().sort({ createdAt: -1 });
-    res.json(sites);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search?.trim() || '';
+    const sort = req.query.sort || 'createdAt'; // field to sort by
+    const order = req.query.order === 'asc' ? 1 : -1; // asc or desc
+
+    const skip = (page - 1) * limit;
+
+    // Build search query
+    const searchQuery = search
+      ? {
+          $or: [
+            { clientName: { $regex: search, $options: 'i' } },
+            { siteRefName: { $regex: search, $options: 'i' } },
+            { location: { $regex: search, $options: 'i' } },
+            { lpoNo: { $regex: search, $options: 'i' } },
+            { jobRefNo: { $regex: search, $options: 'i' } },
+          ],
+        }
+      : {};
+
+    const total = await Site.countDocuments(searchQuery);
+    const sites = await Site.find(searchQuery)
+      .sort({ [sort]: order })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      sites,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    });
   } catch (err) {
     console.error('Get Sites Error:', err);
     res.status(500).json({ msg: 'Server error' });
