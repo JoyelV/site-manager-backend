@@ -12,5 +12,6 @@ router.route('/')
 
 router.route('/:id')
   .put(updateWorker)
+  .delete(deleteWorker);
 
 module.exports = router;
