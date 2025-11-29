@@ -18,11 +18,11 @@ const formatDate = (date) =>
 
 const startExpiryCron = () => {
 
-  console.log("⏱ Cron job scheduled for 11 PM IST daily...");
+  console.log("⏱ Cron job scheduled for 04 PM IST daily...");
 
-  // RUN EVERYDAY AT 11 PM IST
+  // RUN EVERYDAY AT 04 PM IST
   cron.schedule(
-    "54 08 * * *",
+    "00 16 * * *",
     async () => {
       console.log("⚡ Cron Triggered at:", new Date().toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
