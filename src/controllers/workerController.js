@@ -154,31 +154,4 @@ const updateWorker = async (req, res) => {
   }
 };
 
-/**
- * DELETE /api/workers/:id
- */
-const deleteWorker = async (req, res) => {
-  try {
-    const worker = await Worker.findByIdAndDelete(req.params.id);
-    if (!worker) {
-      return res.status(404).json({
-        success: false,
-        msg: "Worker not found",
-      });
-    }
-    res.json({
-      success: true,
-      msg: "Worker deleted successfully",
-      deletedId: worker._id,
-    });
-  } catch (err) {
-    console.error("Delete Worker Error:", err);
-    res.status(500).json({
-      success: false,
-      msg: "Server error",
-      error: err.message,
-    });
-  }
-};
-
-module.exports = { getWorkers, createWorker, updateWorker, deleteWorker };
+module.exports = { getWorkers, createWorker, updateWorker };

@@ -1,5 +1,5 @@
 const express = require('express');
-const { upsertDaily, getByDate, getRange } = require('../controllers/attendanceController');
+const { upsertDaily, getByDate, getRange,getMonthlyAttendance } = require('../controllers/attendanceController');
 
 const protect = require('../middleware/authMiddleware');
 
@@ -10,6 +10,7 @@ router.use(protect);
 // routes/attendanceRoutes.js
 router.post('/daily', upsertDaily);
 router.get('/daily/:date', getByDate);
-router.get('/daily/range', getRange);
+router.get('/range', getRange);
+router.get('/monthly', getMonthlyAttendance);  
 
 module.exports = router;

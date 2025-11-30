@@ -73,16 +73,4 @@ const updateSite = async (req, res) => {
   }
 };
 
-// DELETE /api/sites/:id
-const deleteSite = async (req, res) => {
-  try {
-    const site = await Site.findByIdAndDelete(req.params.id);
-    if (!site) return res.status(404).json({ msg: 'Site not found' });
-    res.json({ msg: 'Site deleted' });
-  } catch (err) {
-    console.error('Delete Site Error:', err);
-    res.status(500).json({ msg: 'Server error' });
-  }
-};
-
-module.exports = { getSites, createSite, updateSite, deleteSite };
+module.exports = { getSites, createSite, updateSite };

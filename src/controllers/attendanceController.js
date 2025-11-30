@@ -92,4 +92,28 @@ const getRange = async (req, res) => {
   }
 };
 
-module.exports = { upsertDaily, getByDate, getRange };
+const getMonthlyAttendance = async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    if (!year || !month) return res.status(400).json({ msg: "year & month required" });
+
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+    const records = await DailyAttendance.find({
+      date: { $gte: start, $lte: end }
+    })
+      .populate('worker', 'firstName lastName employeeNo')
+      .populate('site', 'siteRefName')
+      .select('date status workingHours otHours')
+      .sort({ date: 1, "worker.employeeNo": 1 })
+      .lean();
+
+    res.json({ records, total: records.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
+module.exports = { upsertDaily, getByDate, getRange, getMonthlyAttendance };
