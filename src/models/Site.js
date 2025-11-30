@@ -8,7 +8,6 @@ const siteSchema = new mongoose.Schema({
   lpoStatus: { type: String, default: 'Not Received', trim: true },
   jobRefNo: { type: String, trim: true },
   siteInChargeName: { type: String, trim: true },
-  system: { type: String, trim: true },
   startDate: { type: Date, required: true },
   endDate: { type: Date },
 }, { timestamps: true });
