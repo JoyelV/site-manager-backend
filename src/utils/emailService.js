@@ -159,7 +159,7 @@ const sendExpiryReminderEmail = async (toEmail, data) => {
     const api = initializeBrevoAPI();
     const sendSmtpEmail = new brevo.SendSmtpEmail();
 
-    sendSmtpEmail.subject = `Document Expiry Alert - ${hasExpired ? "Expired Items" : "Expiring Soon"}`;
+    sendSmtpEmail.subject = `Document Expiry Alert - ${hasExpired ? "Expired Documents" : "Expiring Soon"}`;
     sendSmtpEmail.htmlContent = htmlContent;
     sendSmtpEmail.sender = {
       name: "Document Compliance System",
