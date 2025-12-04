@@ -7,20 +7,43 @@ const { sendOtpEmail } = require('../utils/mailer');
 // 1. Request OTP
 const requestOtp = async (req, res) => {
   const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ msg: 'Email is required' });
+  }
+
   try {
     const user = await User.findOne({ email });
+    
+    // Always respond the same way (security: don't reveal if email exists)
     if (!user) {
       return res.json({ msg: 'If email exists, OTP sent.' });
     }
 
-    const otp = crypto.randomInt(100000, 999999).toString();
-    user.resetOtp = otp;
-    user.resetOtpExpires = Date.now() + 5 * 60 * 1000; 
-    await user.save();
+    // Rate limiting: Max 1 OTP per 45 seconds (adjust as needed)
+    const OTP_COOLDOWN = 45 * 1000; // 45 seconds
+    const now = Date.now();
 
+    if (user.lastOtpSentAt && now - user.lastOtpSentAt < OTP_COOLDOWN) {
+      const waitTime = Math.ceil((OTP_COOLDOWN - (now - user.lastOtpSentAt)) / 1000);
+      return res.status(429).json({
+        msg: `Too many requests. Please wait ${waitTime} seconds before requesting again.`,
+      });
+    }
+
+    // Generate new OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    
+    user.resetOtp = otp;
+    user.resetOtpExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+    user.lastOtpSentAt = Date.now(); // Update timestamp
+
+    await user.save();
     await sendOtpEmail(email, otp);
+
     res.json({ msg: 'OTP sent to email' });
   } catch (err) {
+    console.error('OTP Request Error:', err);
     res.status(500).json({ msg: 'Server error' });
   }
 };
@@ -35,11 +58,11 @@ const verifyOtpAndReset = async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({
-      email,
-      resetOtp: otp,
-      resetOtpExpires: { $gt: Date.now() },
-    });
+const user = await User.findOne({
+  email,
+  resetOtp: otp.trim(), 
+  resetOtpExpires: { $gt: Date.now() },
+});
 
     if (!user) {
       return res.status(400).json({ msg: 'Invalid or expired OTP' });
