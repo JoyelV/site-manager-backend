@@ -54,6 +54,7 @@ app.use('/api/workers', require('./routes/workerRoutes'));
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/salary', require('./routes/salaryRoutes'));
 app.use('/api', require('./routes/ping'));
+app.use('/api/advances', require('./routes/advance'));
 
 // Test email endpoint - ONLY IN DEVELOPMENT
 if (process.env.NODE_ENV !== 'production') {
