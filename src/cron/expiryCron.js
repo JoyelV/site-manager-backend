@@ -22,7 +22,7 @@ const startExpiryCron = () => {
 
   // RUN EVERYDAY AT 07 PM IST
   cron.schedule(
-    "12 19 * * *",
+    "16 19 * * *",
     async () => {
       console.log("⚡ Cron Triggered at:", new Date().toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
