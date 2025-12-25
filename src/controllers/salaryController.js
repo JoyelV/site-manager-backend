@@ -2,6 +2,7 @@
 const DailyAttendance = require('../models/Attendance');
 const Advance = require('../models/Advance');
 const Worker = require('../models/Worker');
+const Wps = require('../models/Wps');
 
 const getSalaryReport = async (req, res) => {
   try {
@@ -87,6 +88,11 @@ const getSalaryReport = async (req, res) => {
 
     const normalHoursPerMonth = 208; // 26 days × 8 hours
 
+    // Fetch WPS records for this month
+    const wpsRecords = await Wps.find({ month }).lean();
+    const wpsByWorker = {};
+    wpsRecords.forEach(w => { wpsByWorker[w.worker.toString()] = w.amount; });
+
     const records = workers.map(worker => {
       const att = attendanceAgg.find(a => a._id.toString() === worker._id.toString()) || {
         presentDays: 0,
@@ -109,7 +115,8 @@ const getSalaryReport = async (req, res) => {
       const workerAdvances = advancesByWorker[worker._id.toString()] || [];
       const totalAdvance = workerAdvances.reduce((sum, a) => sum + a.amount, 0);
 
-      const netPayable = Math.max(0, totalSalary + totalOtAed - absentDeduction - totalAdvance);
+      const wpsAmount = Number(wpsByWorker[worker._id.toString()] ?? 0);
+      const netPayable = Math.max(0, totalSalary + totalOtAed - absentDeduction - totalAdvance + wpsAmount);
 
       return {
         _id: worker._id,
@@ -130,6 +137,7 @@ const getSalaryReport = async (req, res) => {
         perDayAed: +perDayRate.toFixed(2),
         absentDeduction: +absentDeduction.toFixed(2),
         advance: +totalAdvance,
+        wps: +wpsAmount,
         totalSalaryPayable: +netPayable.toFixed(2)
       };
     });
@@ -141,6 +149,7 @@ const getSalaryReport = async (req, res) => {
       totalOtAed: +records.reduce((a, b) => a + b.totalOtAed, 0).toFixed(2),
       totalAbsentDeduction: +records.reduce((a, b) => a + b.absentDeduction, 0).toFixed(2),
       totalAdvanceDeduction: +records.reduce((a, b) => a + b.advance, 0).toFixed(2),
+      totalWps: +records.reduce((a, b) => a + (b.wps || 0), 0).toFixed(2),
       totalPayroll: +records.reduce((a, b) => a + b.totalSalaryPayable, 0).toFixed(2)
     };
 
@@ -151,4 +160,37 @@ const getSalaryReport = async (req, res) => {
   }
 };
 
-module.exports = { getSalaryReport };
+const setWps = async (req, res) => {
+  try {
+    const { month, workerId, amount } = req.body;
+    if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ msg: 'Valid month required (YYYY-MM)' });
+    }
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (month !== currentMonth) {
+      return res.status(400).json({ msg: 'WPS can only be set for the current month' });
+    }
+
+    if (!workerId) return res.status(400).json({ msg: 'workerId required' });
+
+    const worker = await Worker.findById(workerId);
+    if (!worker) return res.status(404).json({ msg: 'Worker not found' });
+
+    const amt = Number(amount) || 0;
+
+    const doc = await Wps.findOneAndUpdate(
+      { worker: workerId, month },
+      { amount: amt },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ msg: 'WPS saved', wps: doc });
+  } catch (err) {
+    console.error('setWps error', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+module.exports = { getSalaryReport, setWps };

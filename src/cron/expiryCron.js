@@ -18,9 +18,9 @@ const formatDate = (date) =>
 
 const startExpiryCron = () => {
 
-  console.log("⏱ Cron job scheduled for 08 PM IST daily...");
+  console.log("⏱ Cron job scheduled for 4 AM IST daily...");
 
-  // RUN EVERYDAY AT 08 PM IST
+  // RUN EVERYDAY AT 04 AM IST
   cron.schedule(
     "04 00 * * *",
     async () => {
