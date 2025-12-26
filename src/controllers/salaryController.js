@@ -116,7 +116,8 @@ const getSalaryReport = async (req, res) => {
       const totalAdvance = workerAdvances.reduce((sum, a) => sum + a.amount, 0);
 
       const wpsAmount = Number(wpsByWorker[worker._id.toString()] ?? 0);
-      const netPayable = Math.max(0, totalSalary + totalOtAed - absentDeduction - totalAdvance + wpsAmount);
+      // WPS is a deduction from salary (reduce payable)
+      const netPayable = Math.max(0, totalSalary + totalOtAed - absentDeduction - totalAdvance - wpsAmount);
 
       return {
         _id: worker._id,
