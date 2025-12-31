@@ -6,6 +6,7 @@ const Advance = require('../models/Advance');
 const Worker = require('../models/Worker');
 const Wps = require('../models/Wps'); // Keeping for legacy/migration if needed, or we can drop usage. Keeping logical ref.
 const SalaryReport = require('../models/SalaryReport');
+const { calculateWorkerSalary } = require('../utils/salaryCalculator');
 
 const getPreviousMonth = (currentMonth) => {
   const [year, mon] = currentMonth.split('-').map(Number);
@@ -38,50 +39,27 @@ const getWorkerSalaryStats = async (workerId, month) => {
 
   const att = attendanceAgg[0] || { presentDays: 0, totalHours: 0, normalOtHours: 0, sundayOtHours: 0 };
 
-  // Advances
+  // Advances - Look for ALL Pending, or those deducted in THIS key month (for re-runs)
+  // We want to "simulate" the state before this month was finalized, so we include:
+  // 1. Status = Pending (Date <= MonthEnd)
+  // 2. Status = Deducted BUT DeductedInMonth = CurrentMonth (in case we are re-saving)
   const advances = await Advance.find({
     worker: workerId,
-    dateGiven: { $gte: start, $lte: end },
-    $or: [{ status: 'pending' }, { status: 'deducted', deductedInMonth: month }]
+    dateGiven: { $lte: end },
+    $or: [
+      { status: 'pending' },
+      { status: 'deducted', deductedInMonth: month }
+    ]
   }).lean();
-  const totalAdvance = advances.reduce((sum, a) => sum + a.amount, 0);
 
   // Worker Details
   const worker = await Worker.findById(workerId).lean();
   if (!worker) throw new Error('Worker not found');
 
-  const normalHoursPerMonth = 208;
-  const totalSalary = worker.basicSalary + worker.allowance;
-  const hourlyRate = totalSalary / normalHoursPerMonth;
-  const perDayRate = totalSalary / daysInMonth;
-
-  const otNormal = att.normalOtHours * hourlyRate;
-  const otSunday = att.sundayOtHours * (hourlyRate * 1.5);
-  const totalOtAed = otNormal + otSunday;
-
-  const absentDays = Math.max(0, daysInMonth - att.presentDays);
-  const absentDeduction = absentDays * perDayRate;
-
-  const currentMonthEarnings = Math.max(0, totalSalary + totalOtAed - absentDeduction - totalAdvance);
-
   return {
     worker,
     daysInMonth,
-    stats: {
-      basicSalary: worker.basicSalary,
-      allowance: worker.allowance,
-      totalSalary,
-      totalHours: att.totalHours,
-      normalOtHours: att.normalOtHours,
-      sundayOtHours: att.sundayOtHours,
-      otAedPerHrNormal: hourlyRate,
-      otAedPerHrSunday: hourlyRate * 1.5,
-      totalOtAed,
-      absentDays,
-      absentDeduction,
-      advanceDeduction: totalAdvance,
-      totalPayable: currentMonthEarnings
-    }
+    stats: calculateWorkerSalary(worker, att, advances, daysInMonth)
   };
 };
 
@@ -127,14 +105,18 @@ const getSalaryReport = async (req, res) => {
     });
 
     // 4. Advances & Workers
+    // Fetch ALL pending advances up to end of month, OR deducted in this month
     const workers = await Worker.find({}).lean();
-    const monthAdvances = await Advance.find({
-      dateGiven: { $gte: start, $lte: end },
-      $or: [{ status: 'pending' }, { status: 'deducted', deductedInMonth: month }]
+    const allAdvances = await Advance.find({
+      dateGiven: { $lte: end },
+      $or: [
+        { status: 'pending' },
+        { status: 'deducted', deductedInMonth: month }
+      ]
     }).lean();
 
     const advancesByWorker = {};
-    monthAdvances.forEach(adv => {
+    allAdvances.forEach(adv => {
       const wid = adv.worker.toString();
       if (!advancesByWorker[wid]) advancesByWorker[wid] = [];
       advancesByWorker[wid].push(adv);
@@ -163,10 +145,14 @@ const getSalaryReport = async (req, res) => {
       const absentDeduction = absentDays * perDayRate;
 
       const workerAdvances = advancesByWorker[wid] || [];
-      const totalAdvance = workerAdvances.reduce((sum, a) => sum + a.amount, 0);
+
+      // Calculate using shared utility
+      const stats = calculateWorkerSalary(worker, att, workerAdvances, daysInMonth);
 
       // Live Net Earnings
-      const netEarnings = Math.max(0, totalSalary + totalOtAed - absentDeduction - totalAdvance);
+      const netEarnings = stats.totalPayable;
+      const totalAdvance = stats.advanceDeduction;
+      const deductedAdvances = stats.deductedAdvances;
 
       // Merge with Persisted Data
       const prevPending = prevPendingMap[wid] || 0;
@@ -199,10 +185,13 @@ const getSalaryReport = async (req, res) => {
 
         absentDeduction: +absentDeduction.toFixed(2),
         advance: +totalAdvance.toFixed(2),
+        advancePending: +(stats.advancePending || 0).toFixed(2),
+        deductedAdvances: deductedAdvances, // Pass detailed list
 
         // Hybrid Fields
         prevPending: +prevPending.toFixed(2),
-        currentEarnings: +netEarnings.toFixed(2),
+        currentEarnings: +(stats.currentEarnings || 0).toFixed(2),
+        netPayable: +netEarnings.toFixed(2), // Just alias for clarity, front end uses totalSalaryPayable mainly
 
         // Payments from Saved Report
         wps: savedPay.wps,
@@ -220,8 +209,10 @@ const getSalaryReport = async (req, res) => {
       totalAllowance: +records.reduce((a, b) => a + b.allowance, 0).toFixed(2),
       totalSalary: +records.reduce((a, b) => a + b.totalSalary, 0).toFixed(2),
       totalOtAed: +records.reduce((a, b) => a + b.totalOtAed, 0).toFixed(2),
+      totalCurrentEarnings: +records.reduce((a, b) => a + (b.currentEarnings || 0), 0).toFixed(2),
       totalAbsentDeduction: +records.reduce((a, b) => a + b.absentDeduction, 0).toFixed(2),
       totalAdvanceDeduction: +records.reduce((a, b) => a + b.advance, 0).toFixed(2),
+      totalAdvancePending: +records.reduce((a, b) => a + (b.advancePending || 0), 0).toFixed(2),
       totalPrevPending: +records.reduce((a, b) => a + b.prevPending, 0).toFixed(2),
       totalWps: +records.reduce((a, b) => a + b.wps, 0).toFixed(2),
       totalCash: +records.reduce((a, b) => a + b.cash, 0).toFixed(2),
@@ -274,9 +265,14 @@ const saveSalary = async (req, res) => {
       otAedPerHrSunday: stats.otAedPerHrSunday,
       totalOtAed: stats.totalOtAed,
 
+      // ADDED FIELD
+      currentEarnings: stats.currentEarnings,
+
       absentDays: stats.absentDays,
       absentDeduction: stats.absentDeduction,
       advanceDeduction: stats.advanceDeduction,
+      advancePending: stats.advancePending,
+      deductedAdvances: stats.deductedAdvances,
 
       totalPayable: net,
       wpsAmount: wps,
@@ -286,12 +282,36 @@ const saveSalary = async (req, res) => {
       status: 'saved'
     };
 
-    // 3. Upsert
+    // 3. Upsert Salary Report
     const doc = await SalaryReport.findOneAndUpdate(
       { worker: workerId, month },
       reportData,
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
+    // 4. Update Advance Statuses
+    // First, revert any previous deductions for this month (if re-saving)
+    // We set ANY advance deducted in this month back to pending, then re-apply based on current calculation
+    // This handles the case where salary DECREASED and fewer advances can be deducted.
+    await Advance.updateMany(
+      { worker: workerId, deductedInMonth: month },
+      { $set: { status: 'pending', deductedInMonth: null, deductedAt: null } }
+    );
+
+    // Now mark the newly deducted ones as deducted
+    if (stats.deductedAdvances && stats.deductedAdvances.length > 0) {
+      const deductedIds = stats.deductedAdvances.map(a => a.advanceId);
+      await Advance.updateMany(
+        { _id: { $in: deductedIds } },
+        {
+          $set: {
+            status: 'deducted',
+            deductedInMonth: month,
+            deductedAt: new Date()
+          }
+        }
+      );
+    }
 
     res.json({ msg: 'Salary Saved', report: doc });
   } catch (err) {

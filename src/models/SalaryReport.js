@@ -19,10 +19,20 @@ const SalaryReportSchema = new mongoose.Schema({
     otAedPerHrSunday: { type: Number, default: 0 },
     totalOtAed: { type: Number, default: 0 },
 
+    // Gross (Before Advance Deduction)
+    currentEarnings: { type: Number, default: 0 },
+
     // Deductions
     absentDays: { type: Number, default: 0 },
     absentDeduction: { type: Number, default: 0 },
     advanceDeduction: { type: Number, default: 0 },
+    advancePending: { type: Number, default: 0 }, // Remaining advance AFTER this month's deduction
+    deductedAdvances: [{
+        advanceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Advance' },
+        amount: Number,
+        dateGiven: Date,
+        notes: String
+    }],
 
     // Net
     totalPayable: { type: Number, default: 0 }, // Net Payable for this month
