@@ -91,9 +91,9 @@ const getSalaryReport = async (req, res) => {
 
     // 2. Fetch Payments (Saved Report for CURRENT month)
     const currentReports = await SalaryReport.find({ month }).lean();
-    const savedPayments = {}; // Map workerId -> { wps, cash }
+    const savedReportsMap = {}; // Map workerId -> entire saved report
     currentReports.forEach(r => {
-      savedPayments[r.worker.toString()] = { wps: r.wpsAmount || 0, cash: r.cashAmount || 0 };
+      savedReportsMap[r.worker.toString()] = r;
     });
 
     // 3. Fetch Previous Pending (Saved Report for PREVIOUS month)
@@ -150,23 +150,57 @@ const getSalaryReport = async (req, res) => {
       const stats = calculateWorkerSalary(worker, att, workerAdvances, daysInMonth);
 
       // Live Net Earnings
-      const netEarnings = stats.totalPayable;
+      // const netEarnings = stats.totalPayable; // Removed to avoid redeclaration, handled below
       const totalAdvance = stats.advanceDeduction;
       const deductedAdvances = stats.deductedAdvances;
 
       // Merge with Persisted Data
       const prevPending = prevPendingMap[wid] || 0;
-      const savedPay = savedPayments[wid] || { wps: 0, cash: 0 };
+      const savedReport = savedReportsMap[wid];
+
+      // If we have a saved report, we MUST use its deductions if they were effectively "frozen" or "edited".
+      // However, the requirement "advance deducted should be manually edited" implies we prefer the saved value if present.
+      // But we also want "live" updates for attendance.
+      // Strategy: 
+      // 1. Advance Deduction: Use Saved if exists (manual override), else Calculated. 
+      //    (Actually, if we save, we save the Calculated one too if not overridden. So 'saved' is usually safer if we want stability, 
+      //    BUT if attendance changes, we might want to re-calc? 
+      //    The prompt says "manually edited INSTEAD OF checking salary is available".
+      //    So if I edit it, it stays. 
+      //    Let's use the Saved value for Advance if the report is 'saved'.
+      // 2. Other Deduction: Use Saved (default 0).
+
+      let finalAdvance = stats.advanceDeduction;
+      let finalOther = 0;
+      let savedWps = 0;
+      let savedCash = 0;
+
+      if (savedReport) {
+        finalAdvance = savedReport.advanceDeduction;
+        finalOther = savedReport.otherDeduction || 0;
+        savedWps = savedReport.wpsAmount || 0;
+        savedCash = savedReport.cashAmount || 0;
+      }
+
+      // Calculate Total Debt and Real Pending
+      const totalDebt = (stats.advancePending || 0) + stats.advanceDeduction;
+      const realAdvancePending = Math.max(0, totalDebt - finalAdvance);
+
+      // Recalculate Net/Due
+      // Net = Gross(CurrentEarnings) - Advance - Other(Deduction)
+      const netEarnings = stats.currentEarnings - finalAdvance - finalOther;
 
       const totalDue = netEarnings + prevPending;
-      const totalPaid = savedPay.wps + savedPay.cash;
-      const pending = Math.max(0, totalDue - totalPaid);
+      const totalPaid = savedWps + savedCash;
+      const pending = totalDue - totalPaid; // Allow negative
 
       return {
         _id: worker._id,
         givenName: worker.firstName,
         surname: worker.lastName,
         employNo: worker.employeeNo,
+        designation: worker.designation,
+        companyName: worker.companyName,
 
         basicSalary: +worker.basicSalary.toFixed(2),
         allowance: +worker.allowance.toFixed(2),
@@ -184,8 +218,10 @@ const getSalaryReport = async (req, res) => {
         perDayAed: +perDayRate.toFixed(2),
 
         absentDeduction: +absentDeduction.toFixed(2),
-        advance: +totalAdvance.toFixed(2),
-        advancePending: +(stats.advancePending || 0).toFixed(2),
+        absentDeduction: +absentDeduction.toFixed(2),
+        advance: +finalAdvance.toFixed(2),
+        otherDeduction: +finalOther.toFixed(2),
+        advancePending: +realAdvancePending.toFixed(2), // Updated logic
         deductedAdvances: deductedAdvances, // Pass detailed list
 
         // Hybrid Fields
@@ -194,13 +230,13 @@ const getSalaryReport = async (req, res) => {
         netPayable: +netEarnings.toFixed(2), // Just alias for clarity, front end uses totalSalaryPayable mainly
 
         // Payments from Saved Report
-        wps: savedPay.wps,
-        cash: savedPay.cash,
+        wps: savedWps,
+        cash: savedCash,
 
         totalSalaryPayable: +totalDue.toFixed(2),
         pending: +pending.toFixed(2),
 
-        isSaved: !!savedPayments[wid] // Just a flag if needed
+        isSaved: !!savedReport // Just a flag if needed
       };
     });
 
@@ -212,6 +248,7 @@ const getSalaryReport = async (req, res) => {
       totalCurrentEarnings: +records.reduce((a, b) => a + (b.currentEarnings || 0), 0).toFixed(2),
       totalAbsentDeduction: +records.reduce((a, b) => a + b.absentDeduction, 0).toFixed(2),
       totalAdvanceDeduction: +records.reduce((a, b) => a + b.advance, 0).toFixed(2),
+      totalOtherDeduction: +records.reduce((a, b) => a + b.otherDeduction, 0).toFixed(2),
       totalAdvancePending: +records.reduce((a, b) => a + (b.advancePending || 0), 0).toFixed(2),
       totalPrevPending: +records.reduce((a, b) => a + b.prevPending, 0).toFixed(2),
       totalWps: +records.reduce((a, b) => a + b.wps, 0).toFixed(2),
@@ -229,7 +266,7 @@ const getSalaryReport = async (req, res) => {
 
 const saveSalary = async (req, res) => {
   try {
-    const { month, workerId, wpsAmount, cashAmount } = req.body;
+    const { month, workerId, wpsAmount, cashAmount, advanceDeduction, otherDeduction } = req.body;
 
     if (!month || !workerId) return res.status(400).json({ msg: 'Missing required fields' });
 
@@ -239,15 +276,40 @@ const saveSalary = async (req, res) => {
     // 2. Prepare Data
     const wps = Number(wpsAmount) || 0;
     const cash = Number(cashAmount) || 0;
+    const other = Number(otherDeduction) || 0;
+    let finalAdvanceDeduction = stats.advanceDeduction;
+
+    // Manual Advance Deduction Override
+    if (advanceDeduction !== undefined && advanceDeduction !== null) {
+      const manualAdvance = Number(advanceDeduction);
+
+      // 1. Validation: Advance Deducted cannot exceed Current Earnings (Gross)
+      //    "only allow advance to be deducted if earned amount is above 0 value and it contains more than advance deducted value amount"
+      //    We can return error 00 or clamp it? "allow" implies validation failure.
+      if (manualAdvance > stats.currentEarnings) {
+        return res.status(400).json({ msg: `Advance deduction (${manualAdvance}) cannot exceed current earnings (${stats.currentEarnings})` });
+      }
+
+      finalAdvanceDeduction = manualAdvance;
+    }
 
     // Fetch Prev Pending for this worker
     const prevMonthStr = getPreviousMonth(month);
     const prevReport = await SalaryReport.findOne({ worker: workerId, month: prevMonthStr }).lean();
     const prevPending = prevReport ? prevReport.pendingAmount : 0;
 
-    const net = stats.totalPayable;
+    // Recalculate Net based on possible manual Advance / Other Deduction
+    // Net = Gross - Advance - Other
+    const net = stats.currentEarnings - finalAdvanceDeduction - other;
     const totalDue = net + prevPending;
-    const pending = Math.max(0, totalDue - (wps + cash));
+
+    // Update Advance Pending Logic
+    // Total Debt = (Pending + Calculated Deduction)
+    const totalDebt = (stats.advancePending || 0) + stats.advanceDeduction;
+    const realAdvancePending = Math.max(0, totalDebt - finalAdvanceDeduction);
+
+    // Allow negative pending (User Request: "pending c/f column can be negative amount")
+    const pending = totalDue - (wps + cash);
 
     const reportData = {
       worker: workerId,
@@ -270,8 +332,9 @@ const saveSalary = async (req, res) => {
 
       absentDays: stats.absentDays,
       absentDeduction: stats.absentDeduction,
-      advanceDeduction: stats.advanceDeduction,
-      advancePending: stats.advancePending,
+      advanceDeduction: finalAdvanceDeduction,
+      otherDeduction: other,
+      advancePending: realAdvancePending, // Updated Logic
       deductedAdvances: stats.deductedAdvances,
 
       totalPayable: net,

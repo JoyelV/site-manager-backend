@@ -19,6 +19,11 @@ const workerSchema = new mongoose.Schema({
   mobNo: { type: String, trim: true },
   basicSalary: { type: Number, required: true, min: 0 },
   allowance: { type: Number, required: true, min: 0 },
+  companyName: {
+    type: String,
+    enum: ['AL FAHEEM ELECTROMECHANICAL WORKS', 'DAF', 'Mazaya Al Madina'],
+    default: 'AL FAHEEM ELECTROMECHANICAL WORKS'
+  }
 }, { timestamps: true });
 
 // Useful indexes
