@@ -29,7 +29,7 @@ const getWorkerSalaryStats = async (workerId, month) => {
     {
       $group: {
         _id: "$worker",
-        presentDays: { $sum: { $cond: [{ $in: ["$status", ["present", 1]] }, 1, 0] } },
+        presentDays: { $sum: { $cond: [{ $in: ["$status", ["present", 1, 2]] }, 1, 0] } },
         totalHours: { $sum: "$workingHours" },
         normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } },
         sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } }
@@ -81,7 +81,7 @@ const getSalaryReport = async (req, res) => {
       {
         $group: {
           _id: "$worker",
-          presentDays: { $sum: { $cond: [{ $in: ["$status", ["present", 1]] }, 1, 0] } },
+          presentDays: { $sum: { $cond: [{ $in: ["$status", ["present", 1, 2]] }, 1, 0] } },
           totalHours: { $sum: "$workingHours" },
           normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } },
           sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } }

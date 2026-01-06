@@ -18,7 +18,7 @@ const dailyAttendanceSchema = new mongoose.Schema(
       // YYYY-MM-DD (UTC midnight)
     },
     // 0 = absent, 0.5 = half-day, 1 = full day
-    status: { type: Number, required: true, min: 0, max: 1 }, 
+    status: { type: Number, required: true, min: 0, max: 2 },
     workingHours: { type: Number, default: 0, min: 0 }, // normal hours (max 8)
     otHours: { type: Number, default: 0, min: 0 },
   },
