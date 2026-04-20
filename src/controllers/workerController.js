@@ -154,4 +154,28 @@ const updateWorker = async (req, res) => {
   }
 };
 
-module.exports = { getWorkers, createWorker, updateWorker };
+/**
+ * DELETE /api/workers/:id (Soft delete / block)
+ */
+const deleteWorker = async (req, res) => {
+  try {
+    const worker = await Worker.findById(req.params.id);
+    if (!worker) {
+      return res.status(404).json({ success: false, msg: "Worker not found" });
+    }
+    
+    worker.isActive = worker.isActive === undefined ? false : !worker.isActive;
+    await worker.save();
+    
+    res.json({
+      success: true,
+      msg: worker.isActive ? "Worker unblocked successfully" : "Worker deleted successfully",
+      data: worker
+    });
+  } catch (err) {
+    console.error("Delete Worker Error:", err);
+    res.status(500).json({ success: false, msg: err.message });
+  }
+};
+
+module.exports = { getWorkers, createWorker, updateWorker, deleteWorker };

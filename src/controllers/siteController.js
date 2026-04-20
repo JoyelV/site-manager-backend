@@ -73,4 +73,21 @@ const updateSite = async (req, res) => {
   }
 };
 
-module.exports = { getSites, createSite, updateSite };
+// DELETE /api/sites/:id (Soft Delete / Toggle block/unblock)
+const deleteSite = async (req, res) => {
+  try {
+    const site = await Site.findById(req.params.id);
+    if (!site) return res.status(404).json({ msg: 'Site not found' });
+    
+    // Toggle the isActive field
+    site.isActive = site.isActive === undefined ? false : !site.isActive;
+    await site.save();
+    
+    res.json({ msg: site.isActive ? 'Site unblocked' : 'Site deleted successfully', site });
+  } catch (err) {
+    console.error('Delete Site Error:', err);
+    res.status(400).json({ msg: err.message });
+  }
+};
+
+module.exports = { getSites, createSite, updateSite, deleteSite };

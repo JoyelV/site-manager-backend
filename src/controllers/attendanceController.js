@@ -1,15 +1,43 @@
 const DailyAttendance = require('../models/Attendance');
 
-/* ---------- CREATE / UPDATE DAILY RECORD ---------- */
 const upsertDaily = async (req, res) => {
   try {
     const { worker, site, date, status, workingHours, otHours } = req.body;
+    
+    // Intents for THIS site
+    const inputNormal = Number(workingHours) || 0;
+    const inputOt = Number(otHours) || 0;
+    
     const isoDate = new Date(date);
     isoDate.setUTCHours(0, 0, 0, 0);
 
+    // Sum currently saved normal hours for OTHER sites today
+    const otherRecords = await DailyAttendance.find({
+      worker,
+      date: isoDate,
+      site: { $ne: site } // exclude the site being edited
+    });
+    
+    const otherNormalHours = otherRecords.reduce((sum, r) => sum + r.workingHours, 0);
+    
+    let newNormal = 0;
+    let newOt = 0;
+    
+    // Enforcement: Maximum 8 normal hours per day across all sites
+    const remainingNormal = Math.max(0, 8 - otherNormalHours);
+    
+    if (inputNormal <= remainingNormal) {
+      newNormal = inputNormal;
+      newOt = inputOt;
+    } else {
+      newNormal = remainingNormal;
+      // Splillover extra intended normal hours into OT + any explicit OT
+      newOt = inputOt + (inputNormal - remainingNormal);
+    }
+
     const record = await DailyAttendance.findOneAndUpdate(
       { worker, site, date: isoDate },
-      { status, workingHours, otHours },
+      { status, workingHours: newNormal, otHours: newOt },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     )
       .populate('worker', 'firstName lastName employeeNo')
@@ -43,21 +71,55 @@ const getByDate = async (req, res) => {
 
       const skip = (page - 1) * limit;
 
-      const [records, total] = await Promise.all([
-        DailyAttendance.find({ date: isoDate })
-          .populate('worker', 'firstName lastName employeeNo')
-          .populate('site', 'siteRefName')
-          .select('worker site status workingHours otHours')
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
+      const rawRecords = await DailyAttendance.find({ date: isoDate })
+        .populate('worker', 'firstName lastName employeeNo')
+        .populate('site', 'siteRefName')
+        .select('worker site status workingHours otHours')
+        .sort({ createdAt: -1 })
+        .lean();
 
-        DailyAttendance.countDocuments({ date: isoDate })
-      ]);
+      // Group by worker for unified daily view
+      const groupedMap = rawRecords.reduce((acc, r) => {
+        if (!r.worker) return acc;
+        const wid = r.worker._id.toString();
+        if (!acc[wid]) {
+          acc[wid] = {
+            _id: r._id, // proxy ID
+            worker: r.worker,
+            status: r.status,
+            workingHours: 0,
+            otHours: 0,
+            details: []
+          };
+        }
+        
+        acc[wid].workingHours += r.workingHours;
+        acc[wid].otHours += r.otHours;
+        
+        if (r.status > acc[wid].status) {
+          acc[wid].status = r.status;
+        }
+        
+        if (r.site && r.site.siteRefName) {
+           acc[wid].details.push({
+             _id: r._id,
+             site: { ...r.site }, // pass site full object in case needed
+             siteName: r.site.siteRefName,
+             workingHours: r.workingHours,
+             otHours: r.otHours
+           });
+        }
+        return acc;
+      }, {});
+
+      const grouped = Object.values(groupedMap);
+
+      const total = grouped.length;
+      
+      const paginatedRecords = grouped.slice(skip, skip + limit);
 
       res.json({
-        records,
+        records: paginatedRecords,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
@@ -105,7 +167,7 @@ const getMonthlyAttendance = async (req, res) => {
     })
       .populate('worker', 'firstName lastName employeeNo')
       .populate('site', 'siteRefName')
-      .select('date status workingHours otHours')
+      .select('date status workingHours otHours worker site')
       .sort({ date: 1, "worker.employeeNo": 1 })
       .lean();
 

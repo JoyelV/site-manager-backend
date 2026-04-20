@@ -23,7 +23,8 @@ const workerSchema = new mongoose.Schema({
     type: String,
     enum: ['AL FAHEEM ELECTROMECHANICAL WORKS', 'DAF', 'Mazaya Al Madina'],
     default: 'AL FAHEEM ELECTROMECHANICAL WORKS'
-  }
+  },
+  isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
 // Useful indexes

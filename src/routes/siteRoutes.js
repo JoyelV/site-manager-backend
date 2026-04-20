@@ -13,5 +13,6 @@ router.route('/')
 
 router.route('/:id')
   .put(updateSite)
+  .delete(deleteSite);
 
 module.exports = router;

@@ -28,11 +28,27 @@ const getWorkerSalaryStats = async (workerId, month) => {
     { $match: { worker: new mongoose.Types.ObjectId(workerId), date: { $gte: start, $lte: end } } },
     {
       $group: {
-        _id: "$worker",
-        presentDays: { $sum: { $cond: [{ $in: ["$status", ["present", 1, 2]] }, 1, 0] } },
-        totalHours: { $sum: "$workingHours" },
-        normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } },
-        sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } }
+        _id: { worker: "$worker", date: "$date" },
+        dayWorkingHours: { $sum: "$workingHours" },
+        dayOtHours: { $sum: "$otHours" },
+        dayMaxStatus: { $max: "$status" }
+      }
+    },
+    {
+      $group: {
+        _id: "$_id.worker",
+        presentDays: {
+          $sum: {
+            $cond: [
+              { $in: ["$dayMaxStatus", ["present", 1, 2]] },
+              1,
+              { $cond: [{ $eq: ["$dayMaxStatus", 0.5] }, 0.5, 0] }
+            ]
+          }
+        },
+        totalHours: { $sum: "$dayWorkingHours" },
+        normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } },
+        sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } }
       }
     }
   ]);
@@ -80,11 +96,27 @@ const getSalaryReport = async (req, res) => {
       { $match: { date: { $gte: start, $lte: end } } },
       {
         $group: {
-          _id: "$worker",
-          presentDays: { $sum: { $cond: [{ $in: ["$status", ["present", 1, 2]] }, 1, 0] } },
-          totalHours: { $sum: "$workingHours" },
-          normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } },
-          sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$date" }, 1] }, "$otHours", 0] } }
+          _id: { worker: "$worker", date: "$date" },
+          dayWorkingHours: { $sum: "$workingHours" },
+          dayOtHours: { $sum: "$otHours" },
+          dayMaxStatus: { $max: "$status" }
+        }
+      },
+      {
+        $group: {
+          _id: "$_id.worker",
+          presentDays: {
+            $sum: {
+              $cond: [
+                { $in: ["$dayMaxStatus", ["present", 1, 2]] },
+                1,
+                { $cond: [{ $eq: ["$dayMaxStatus", 0.5] }, 0.5, 0] }
+              ]
+            }
+          },
+          totalHours: { $sum: "$dayWorkingHours" },
+          normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } },
+          sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } }
         }
       }
     ]);

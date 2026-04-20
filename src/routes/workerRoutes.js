@@ -1,5 +1,5 @@
 const express = require('express');
-const { getWorkers, createWorker, updateWorker } = require('../controllers/workerController');
+const { getWorkers, createWorker, updateWorker, deleteWorker } = require('../controllers/workerController');
 const protect = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -11,6 +11,7 @@ router.route('/')
   .post(createWorker);
 
 router.route('/:id')
-  .put(updateWorker);
+  .put(updateWorker)
+  .delete(deleteWorker);
 
 module.exports = router;
