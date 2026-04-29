@@ -1,5 +1,5 @@
 const express = require('express');
-const { upsertDaily, getByDate, getRange,getMonthlyAttendance } = require('../controllers/attendanceController');
+const { upsertDaily, getByDate, getRange, getMonthlyAttendance, getSiteAllocationReport } = require('../controllers/attendanceController');
 
 const protect = require('../middleware/authMiddleware');
 
@@ -11,6 +11,7 @@ router.use(protect);
 router.post('/daily', upsertDaily);
 router.get('/daily/:date', getByDate);
 router.get('/range', getRange);
+router.get('/allocation-report', getSiteAllocationReport);
 router.get('/monthly', getMonthlyAttendance);  
 
 module.exports = router;

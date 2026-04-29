@@ -1,12 +1,14 @@
 const DailyAttendance = require('../models/Attendance');
+const Site = require('../models/Site');
 
 const upsertDaily = async (req, res) => {
   try {
-    const { worker, site, date, status, workingHours, otHours } = req.body;
+    const { worker, site, date, status, workingHours, otHours, isRamzan } = req.body;
     
     // Intents for THIS site
     const inputNormal = Number(workingHours) || 0;
     const inputOt = Number(otHours) || 0;
+    const isRamzanDay = isRamzan === true || isRamzan === 'true';
     
     const isoDate = new Date(date);
     isoDate.setUTCHours(0, 0, 0, 0);
@@ -23,8 +25,9 @@ const upsertDaily = async (req, res) => {
     let newNormal = 0;
     let newOt = 0;
     
-    // Enforcement: Maximum 8 normal hours per day across all sites
-    const remainingNormal = Math.max(0, 8 - otherNormalHours);
+    // Enforcement: Maximum 8 normal hours per day across all sites (6 for Ramzan)
+    const maxNormal = isRamzanDay ? 6 : 8;
+    const remainingNormal = Math.max(0, maxNormal - otherNormalHours);
     
     if (inputNormal <= remainingNormal) {
       newNormal = inputNormal;
@@ -37,7 +40,7 @@ const upsertDaily = async (req, res) => {
 
     const record = await DailyAttendance.findOneAndUpdate(
       { worker, site, date: isoDate },
-      { status, workingHours: newNormal, otHours: newOt },
+      { status, workingHours: newNormal, otHours: newOt, isRamzan: isRamzanDay },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     )
       .populate('worker', 'firstName lastName employeeNo')
@@ -74,7 +77,7 @@ const getByDate = async (req, res) => {
       const rawRecords = await DailyAttendance.find({ date: isoDate })
         .populate('worker', 'firstName lastName employeeNo')
         .populate('site', 'siteRefName')
-        .select('worker site status workingHours otHours')
+        .select('worker site status workingHours otHours isRamzan')
         .sort({ createdAt: -1 })
         .lean();
 
@@ -106,7 +109,8 @@ const getByDate = async (req, res) => {
              site: { ...r.site }, // pass site full object in case needed
              siteName: r.site.siteRefName,
              workingHours: r.workingHours,
-             otHours: r.otHours
+             otHours: r.otHours,
+             isRamzan: r.isRamzan
            });
         }
         return acc;
@@ -145,7 +149,8 @@ const getRange = async (req, res) => {
       date: { $gte: new Date(start), $lte: new Date(end) },
     })
       .populate('worker', 'firstName lastName employeeNo')
-      .select('worker date status workingHours otHours');
+      .populate('site', 'siteRefName')
+      .select('worker date status workingHours otHours site isRamzan');
 
     res.json(records);
   } catch (err) {
@@ -167,7 +172,7 @@ const getMonthlyAttendance = async (req, res) => {
     })
       .populate('worker', 'firstName lastName employeeNo')
       .populate('site', 'siteRefName')
-      .select('date status workingHours otHours worker site')
+      .select('date status workingHours otHours worker site isRamzan')
       .sort({ date: 1, "worker.employeeNo": 1 })
       .lean();
 
@@ -178,4 +183,77 @@ const getMonthlyAttendance = async (req, res) => {
   }
 };
 
-module.exports = { upsertDaily, getByDate, getRange, getMonthlyAttendance };
+const getSiteAllocationReport = async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ msg: 'start & end required' });
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    endDate.setUTCHours(23, 59, 59, 999);
+
+    const agg = await DailyAttendance.aggregate([
+      {
+        $match: {
+          date: { $gte: startDate, $lte: endDate },
+          status: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: { site: "$site", worker: "$worker" },
+          daysWorked: {
+            $sum: {
+              $cond: [
+                { $in: ["$status", [1, 2]] }, 1,
+                { $cond: [{ $eq: ["$status", 0.5] }, 0.5, 0] }
+              ]
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: "workers",
+          localField: "_id.worker",
+          foreignField: "_id",
+          as: "workerInfo"
+        }
+      },
+      {
+        $unwind: "$workerInfo"
+      },
+      {
+        $group: {
+          _id: "$_id.site",
+          workers: {
+            $push: {
+              firstName: "$workerInfo.firstName",
+              lastName: "$workerInfo.lastName",
+              employeeNo: "$workerInfo.employeeNo",
+              daysWorked: "$daysWorked"
+            }
+          }
+        }
+      }
+    ]);
+
+    const allSites = await Site.find({ isActive: { $ne: false } }).select('siteRefName').lean();
+
+    const report = allSites.map(site => {
+      const siteAgg = agg.find(a => a._id && a._id.toString() === site._id.toString());
+      return {
+        siteId: site._id,
+        siteName: site.siteRefName,
+        workers: siteAgg ? siteAgg.workers : []
+      };
+    });
+
+    res.json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+module.exports = { upsertDaily, getByDate, getRange, getMonthlyAttendance, getSiteAllocationReport };

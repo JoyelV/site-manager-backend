@@ -21,6 +21,7 @@ const dailyAttendanceSchema = new mongoose.Schema(
     status: { type: Number, required: true, min: 0, max: 2 },
     workingHours: { type: Number, default: 0, min: 0 }, // normal hours (max 8)
     otHours: { type: Number, default: 0, min: 0 },
+    isRamzan: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
