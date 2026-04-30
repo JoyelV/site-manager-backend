@@ -166,11 +166,11 @@ const getSalaryReport = async (req, res) => {
       };
 
       const totalSalary = worker.basicSalary + worker.allowance;
-      const hourlyRate = totalSalary / normalHoursPerMonth;
+      const otHourlyRate = worker.basicSalary / daysInMonth / 8;
       const perDayRate = totalSalary / daysInMonth;
 
-      const otNormal = att.normalOtHours * hourlyRate;
-      const otSunday = att.sundayOtHours * (hourlyRate * 1.5);
+      const otNormal = att.normalOtHours * otHourlyRate;
+      const otSunday = att.sundayOtHours * (otHourlyRate * 1.5);
       const totalOtAed = otNormal + otSunday;
 
       const absentDays = Math.max(0, daysInMonth - att.presentDays);
@@ -244,8 +244,8 @@ const getSalaryReport = async (req, res) => {
         sundayOtHr: Math.round(att.sundayOtHours),
 
         absent: Math.max(0, absentDays),
-        otAedPerHrNormal: +hourlyRate.toFixed(2),
-        otAedPerHrSunday: +(hourlyRate * 1.5).toFixed(2),
+        otAedPerHrNormal: +otHourlyRate.toFixed(2),
+        otAedPerHrSunday: +(otHourlyRate * 1.5).toFixed(2),
         totalOtAed: +totalOtAed.toFixed(2),
         perDayAed: +perDayRate.toFixed(2),
 

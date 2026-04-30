@@ -9,14 +9,17 @@ const mongoose = require('mongoose');
  * @returns {Object} Calculated stats
  */
 const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth) => {
-    const normalHoursPerMonth = 208;
+    const normalHoursPerMonth = 208; // Keep for reference if needed
     const totalSalary = worker.basicSalary + worker.allowance;
-    const hourlyRate = totalSalary / normalHoursPerMonth;
+    
+    // New Client Requirement: OT calculated on Basic Pay / daysInMonth / 8 hours
+    const otHourlyRate = worker.basicSalary / daysInMonth / 8;
+    
     const perDayRate = totalSalary / daysInMonth;
 
     // OT Calculation
-    const otNormal = att.normalOtHours * hourlyRate;
-    const otSunday = att.sundayOtHours * (hourlyRate * 1.5);
+    const otNormal = att.normalOtHours * otHourlyRate;
+    const otSunday = att.sundayOtHours * (otHourlyRate * 1.5);
     const totalOtAed = otNormal + otSunday;
 
     // Absence Calculation
