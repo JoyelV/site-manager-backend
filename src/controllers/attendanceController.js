@@ -256,4 +256,19 @@ const getSiteAllocationReport = async (req, res) => {
   }
 };
 
-module.exports = { upsertDaily, getByDate, getRange, getMonthlyAttendance, getSiteAllocationReport };
+/* ---------- DELETE RECORD ---------- */
+const deleteDaily = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const record = await DailyAttendance.findByIdAndDelete(id);
+    if (!record) {
+      return res.status(404).json({ msg: 'Record not found' });
+    }
+    res.status(200).json({ msg: 'Record deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting daily record:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+module.exports = { upsertDaily, getByDate, getRange, getMonthlyAttendance, getSiteAllocationReport, deleteDaily };
