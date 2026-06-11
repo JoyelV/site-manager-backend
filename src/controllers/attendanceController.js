@@ -212,7 +212,22 @@ const getSiteAllocationReport = async (req, res) => {
               ]
             }
           },
-          totalHours: { $sum: "$workingHours" },
+          // If workingHours was saved as 0 (old records without hours),
+          // fall back to deriving from status: full-day=8hrs, half-day=4hrs
+          totalHours: {
+            $sum: {
+              $cond: [
+                { $gt: ["$workingHours", 0] },
+                "$workingHours",
+                {
+                  $cond: [
+                    { $in: ["$status", [1, 2]] }, 8,
+                    { $cond: [{ $eq: ["$status", 0.5] }, 4, 0] }
+                  ]
+                }
+              ]
+            }
+          },
           totalOtHours: { $sum: "$otHours" }
         }
       },
