@@ -1,3 +1,4 @@
+// @ts-nocheck
 const DailyAttendance = require('../models/Attendance');
 const Site = require('../models/Site');
 
@@ -34,7 +35,7 @@ const upsertDaily = async (req, res) => {
       newOt = inputOt;
     } else {
       newNormal = remainingNormal;
-      // Splillover extra intended normal hours into OT + any explicit OT
+      // Spillover extra intended normal hours into OT + any explicit OT
       newOt = inputOt + (inputNormal - remainingNormal);
     }
 
@@ -183,6 +184,7 @@ const getMonthlyAttendance = async (req, res) => {
   }
 };
 
+/* ---------- SITE ALLOCATION REPORT ---------- */
 const getSiteAllocationReport = async (req, res) => {
   try {
     const { start, end } = req.query;
@@ -209,7 +211,9 @@ const getSiteAllocationReport = async (req, res) => {
                 { $cond: [{ $eq: ["$status", 0.5] }, 0.5, 0] }
               ]
             }
-          }
+          },
+          totalHours: { $sum: "$workingHours" },
+          totalOtHours: { $sum: "$otHours" }
         }
       },
       {
@@ -231,7 +235,9 @@ const getSiteAllocationReport = async (req, res) => {
               firstName: "$workerInfo.firstName",
               lastName: "$workerInfo.lastName",
               employeeNo: "$workerInfo.employeeNo",
-              daysWorked: "$daysWorked"
+              daysWorked: "$daysWorked",
+              totalHours: "$totalHours",
+              totalOtHours: "$totalOtHours"
             }
           }
         }
