@@ -2,6 +2,8 @@
 const DailyAttendance = require('../models/Attendance');
 const Site = require('../models/Site');
 
+
+
 const upsertDaily = async (req, res) => {
   try {
     const { worker, site, date, status, workingHours, otHours, isRamzan } = req.body;

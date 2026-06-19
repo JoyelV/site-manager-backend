@@ -10,6 +10,7 @@ dotenv.config();
 
 // Validate required environment variables
 const requiredEnvVars = ['BREVO_API_KEY', 'ADMIN_EMAIL', 'FRONTEND_URL', 'JWT_SECRET'];
+
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingVars.length > 0) {
@@ -122,4 +123,5 @@ connectDB()
     process.exit(1);
   });
 
+// Export app
 module.exports = app;

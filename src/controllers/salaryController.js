@@ -13,7 +13,21 @@ const getPreviousMonth = (currentMonth) => {
   const date = new Date(year, mon - 2, 1);
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
-  return `${y} -${m} `;
+  return `${y}-${m}`;
+};
+
+// Helper to count Sundays in a month using UTC
+const getSundaysInMonth = (year, mon) => {
+  let sundays = 0;
+  const numDays = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+  console.log("numDays in a month", numDays)
+  for (let day = 1; day <= numDays; day++) {
+    const d = new Date(Date.UTC(year, mon - 1, day));
+    if (d.getUTCDay() === 0) { // Sunday is 0
+      sundays++;
+    }
+  }
+  return sundays;
 };
 
 // Helper for single worker live calc (used in save)
@@ -22,6 +36,7 @@ const getWorkerSalaryStats = async (workerId, month) => {
   const start = new Date(Date.UTC(year, mon - 1, 1));
   const end = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999));
   const daysInMonth = end.getUTCDate();
+  const sundaysInMonth = getSundaysInMonth(year, mon);
 
   // Attendance
   const attendanceAgg = await DailyAttendance.aggregate([
@@ -40,9 +55,15 @@ const getWorkerSalaryStats = async (workerId, month) => {
         presentDays: {
           $sum: {
             $cond: [
-              { $in: ["$dayMaxStatus", ["present", 1, 2]] },
-              1,
-              { $cond: [{ $eq: ["$dayMaxStatus", 0.5] }, 0.5, 0] }
+              { $eq: [{ $dayOfWeek: "$_id.date" }, 1] }, // If Sunday (1)
+              0, // Exclude Sundays from weekday presentDays
+              {
+                $cond: [
+                  { $in: ["$dayMaxStatus", ["present", 1, 2]] },
+                  1,
+                  { $cond: [{ $eq: ["$dayMaxStatus", 0.5] }, 0.5, 0] }
+                ]
+              }
             ]
           }
         },
@@ -75,7 +96,7 @@ const getWorkerSalaryStats = async (workerId, month) => {
   return {
     worker,
     daysInMonth,
-    stats: calculateWorkerSalary(worker, att, advances, daysInMonth)
+    stats: calculateWorkerSalary(worker, att, advances, daysInMonth, sundaysInMonth)
   };
 };
 
@@ -90,6 +111,8 @@ const getSalaryReport = async (req, res) => {
     const start = new Date(Date.UTC(year, mon - 1, 1));
     const end = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999));
     const daysInMonth = end.getUTCDate();
+    const sundaysInMonth = getSundaysInMonth(year, mon);
+    const expectedWorkdays = daysInMonth - sundaysInMonth;
 
     // 1. Always Calculate Live Attendance Stats
     const attendanceAgg = await DailyAttendance.aggregate([
@@ -108,9 +131,15 @@ const getSalaryReport = async (req, res) => {
           presentDays: {
             $sum: {
               $cond: [
-                { $in: ["$dayMaxStatus", ["present", 1, 2]] },
-                1,
-                { $cond: [{ $eq: ["$dayMaxStatus", 0.5] }, 0.5, 0] }
+                { $eq: [{ $dayOfWeek: "$_id.date" }, 1] }, // If Sunday (1)
+                0, // Exclude Sundays from weekday presentDays
+                {
+                  $cond: [
+                    { $in: ["$dayMaxStatus", ["present", 1, 2]] },
+                    1,
+                    { $cond: [{ $eq: ["$dayMaxStatus", 0.5] }, 0.5, 0] }
+                  ]
+                }
               ]
             }
           },
@@ -128,12 +157,14 @@ const getSalaryReport = async (req, res) => {
       savedReportsMap[r.worker.toString()] = r;
     });
 
-    // 3. Fetch Previous Pending (Saved Report for PREVIOUS month)
+    // 3. Fetch Previous Pending and WPS (Saved Report for PREVIOUS month)
     const prevMonthStr = getPreviousMonth(month);
     const prevReports = await SalaryReport.find({ month: prevMonthStr }).lean();
     const prevPendingMap = {};
+    const prevWpsMap = {};
     prevReports.forEach(r => {
       prevPendingMap[r.worker.toString()] = r.pendingAmount || 0;
+      prevWpsMap[r.worker.toString()] = r.wpsAmount || 0;
     });
 
     // 4. Advances & Workers
@@ -173,13 +204,13 @@ const getSalaryReport = async (req, res) => {
       const otSunday = att.sundayOtHours * (otHourlyRate * 1.5);
       const totalOtAed = otNormal + otSunday;
 
-      const absentDays = Math.max(0, daysInMonth - att.presentDays);
+      const absentDays = Math.max(0, expectedWorkdays - att.presentDays);
       const absentDeduction = absentDays * perDayRate;
 
       const workerAdvances = advancesByWorker[wid] || [];
 
       // Calculate using shared utility
-      const stats = calculateWorkerSalary(worker, att, workerAdvances, daysInMonth);
+      const stats = calculateWorkerSalary(worker, att, workerAdvances, daysInMonth, sundaysInMonth);
 
       // Live Net Earnings
       // const netEarnings = stats.totalPayable; // Removed to avoid redeclaration, handled below
@@ -212,6 +243,9 @@ const getSalaryReport = async (req, res) => {
         finalOther = savedReport.otherDeduction || 0;
         savedWps = savedReport.wpsAmount || 0;
         savedCash = savedReport.cashAmount || 0;
+      } else {
+        // Carry forward the previous month's WPS amount as the default
+        savedWps = prevWpsMap[wid] || 0;
       }
 
       // Calculate Total Debt and Real Pending

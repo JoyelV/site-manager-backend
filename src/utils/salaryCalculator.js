@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
  * @param {Number} daysInMonth - Total days in the month
  * @returns {Object} Calculated stats
  */
-const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth) => {
+const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth, sundaysInMonth = 0) => {
     const normalHoursPerMonth = 208; // Keep for reference if needed
     const totalSalary = worker.basicSalary + worker.allowance;
     
@@ -23,7 +23,8 @@ const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth) => {
     const totalOtAed = otNormal + otSunday;
 
     // Absence Calculation
-    const absentDays = Math.max(0, daysInMonth - att.presentDays);
+    const expectedWorkdays = daysInMonth - sundaysInMonth;
+    const absentDays = Math.max(0, expectedWorkdays - att.presentDays);
     const absentDeduction = absentDays * perDayRate;
 
     // Gross Earnings (Before Advances)
