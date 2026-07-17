@@ -169,7 +169,7 @@ const getSalaryReport = async (req, res) => {
 
     // 4. Advances & Workers
     // Fetch ALL pending advances up to end of month, OR deducted in this month
-    const workers = await Worker.find({}).lean();
+    const workers = await Worker.find({ isActive: { $ne: false } }).lean();
     const allAdvances = await Advance.find({
       dateGiven: { $lte: end },
       $or: [
@@ -201,7 +201,7 @@ const getSalaryReport = async (req, res) => {
       const perDayRate = totalSalary / daysInMonth;
 
       const otNormal = att.normalOtHours * otHourlyRate;
-      const otSunday = att.sundayOtHours * (otHourlyRate * 1.5);
+      const otSunday = att.sundayOtHours * otHourlyRate;
       const totalOtAed = otNormal + otSunday;
 
       const absentDays = Math.max(0, expectedWorkdays - att.presentDays);
@@ -279,7 +279,7 @@ const getSalaryReport = async (req, res) => {
 
         absent: Math.max(0, absentDays),
         otAedPerHrNormal: +otHourlyRate.toFixed(2),
-        otAedPerHrSunday: +(otHourlyRate * 1.5).toFixed(2),
+        otAedPerHrSunday: +otHourlyRate.toFixed(2),
         totalOtAed: +totalOtAed.toFixed(2),
         perDayAed: +perDayRate.toFixed(2),
 

@@ -19,7 +19,7 @@ const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth, sunday
 
     // OT Calculation
     const otNormal = att.normalOtHours * otHourlyRate;
-    const otSunday = att.sundayOtHours * (otHourlyRate * 1.5);
+    const otSunday = att.sundayOtHours * otHourlyRate;
     const totalOtAed = otNormal + otSunday;
 
     // Absence Calculation
@@ -71,7 +71,7 @@ const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth, sunday
         normalOtHours: att.normalOtHours,
         sundayOtHours: att.sundayOtHours,
         otAedPerHrNormal: otHourlyRate,
-        otAedPerHrSunday: otHourlyRate * 1.5,
+        otAedPerHrSunday: otHourlyRate,
         totalOtAed,
         absentDays,
         absentDeduction,
