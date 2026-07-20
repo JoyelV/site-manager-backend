@@ -28,7 +28,6 @@ const workerSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Useful indexes
-workerSchema.index({ employeeNo: 1 });
 workerSchema.index({ firstName: 1, lastName: 1 });
 workerSchema.index({ visaExpDate: 1 });
 workerSchema.index({ laborCardExpDate: 1 });
