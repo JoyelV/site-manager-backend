@@ -26,7 +26,7 @@ const SalaryReportSchema = new mongoose.Schema({
     absentDays: { type: Number, default: 0 },
     absentDeduction: { type: Number, default: 0 },
     advanceDeduction: { type: Number, default: 0 },
-    otherDeduction: { type: Number, default: 0 }, // Medical/Petty Cash
+    otherDeduction: { type: Number, default: 0 }, // Medical/Petty Cash/Site Allowance (Added to Net)
     advancePending: { type: Number, default: 0 }, // Remaining advance AFTER this month's deduction
     deductedAdvances: [{
         advanceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Advance' },

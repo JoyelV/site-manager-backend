@@ -24,7 +24,9 @@ const calculateWorkerSalary = (worker, att, pendingAdvances, daysInMonth, sunday
 
     // Absence Calculation
     const expectedWorkdays = daysInMonth - sundaysInMonth;
-    const absentDays = Math.max(0, expectedWorkdays - att.presentDays);
+    const weekdayAbsentDays = Math.max(0, expectedWorkdays - att.presentDays);
+    const sundayAbsentDays = att.sundayAbsentDays || 0;
+    const absentDays = weekdayAbsentDays + sundayAbsentDays;
     const absentDeduction = absentDays * perDayRate;
 
     // Gross Earnings (Before Advances)
