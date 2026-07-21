@@ -67,6 +67,20 @@ const getWorkerSalaryStats = async (workerId, month) => {
             ]
           }
         },
+        sundayAbsentDays: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: [{ $dayOfWeek: "$_id.date" }, 1] },
+                  { $eq: ["$dayMaxStatus", 0] }
+                ]
+              },
+              1,
+              0
+            ]
+          }
+        },
         totalHours: { $sum: "$dayWorkingHours" },
         normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } },
         sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } }
@@ -74,7 +88,7 @@ const getWorkerSalaryStats = async (workerId, month) => {
     }
   ]);
 
-  const att = attendanceAgg[0] || { presentDays: 0, totalHours: 0, normalOtHours: 0, sundayOtHours: 0 };
+  const att = attendanceAgg[0] || { presentDays: 0, totalHours: 0, normalOtHours: 0, sundayOtHours: 0, sundayAbsentDays: 0 };
 
   // Advances - Look for ALL Pending, or those deducted in THIS key month (for re-runs)
   // We want to "simulate" the state before this month was finalized, so we include:
@@ -143,6 +157,20 @@ const getSalaryReport = async (req, res) => {
               ]
             }
           },
+          sundayAbsentDays: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: [{ $dayOfWeek: "$_id.date" }, 1] },
+                    { $eq: ["$dayMaxStatus", 0] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
           totalHours: { $sum: "$dayWorkingHours" },
           normalOtHours: { $sum: { $cond: [{ $ne: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } },
           sundayOtHours: { $sum: { $cond: [{ $eq: [{ $dayOfWeek: "$_id.date" }, 1] }, "$dayOtHours", 0] } }
@@ -193,7 +221,7 @@ const getSalaryReport = async (req, res) => {
 
       // Live Attendance
       const att = attendanceAgg.find(a => a._id.toString() === wid) || {
-        presentDays: 0, totalHours: 0, normalOtHours: 0, sundayOtHours: 0
+        presentDays: 0, totalHours: 0, normalOtHours: 0, sundayOtHours: 0, sundayAbsentDays: 0
       };
 
       const totalSalary = worker.basicSalary + worker.allowance;
@@ -204,13 +232,13 @@ const getSalaryReport = async (req, res) => {
       const otSunday = att.sundayOtHours * otHourlyRate;
       const totalOtAed = otNormal + otSunday;
 
-      const absentDays = Math.max(0, expectedWorkdays - att.presentDays);
-      const absentDeduction = absentDays * perDayRate;
-
       const workerAdvances = advancesByWorker[wid] || [];
 
       // Calculate using shared utility
       const stats = calculateWorkerSalary(worker, att, workerAdvances, daysInMonth, sundaysInMonth);
+
+      const absentDays = stats.absentDays;
+      const absentDeduction = stats.absentDeduction;
 
       // Live Net Earnings
       // const netEarnings = stats.totalPayable; // Removed to avoid redeclaration, handled below
@@ -253,8 +281,8 @@ const getSalaryReport = async (req, res) => {
       const realAdvancePending = Math.max(0, totalDebt - finalAdvance);
 
       // Recalculate Net/Due
-      // Net = Gross(CurrentEarnings) - Advance - Other(Deduction)
-      const netEarnings = stats.currentEarnings - finalAdvance - finalOther;
+      // Net = Gross(CurrentEarnings) - Advance + Other
+      const netEarnings = stats.currentEarnings - finalAdvance + finalOther;
 
       const totalDue = netEarnings + prevPending;
       const totalPaid = savedWps + savedCash;
@@ -364,9 +392,9 @@ const saveSalary = async (req, res) => {
     const prevReport = await SalaryReport.findOne({ worker: workerId, month: prevMonthStr }).lean();
     const prevPending = prevReport ? prevReport.pendingAmount : 0;
 
-    // Recalculate Net based on possible manual Advance / Other Deduction
-    // Net = Gross - Advance - Other
-    const net = stats.currentEarnings - finalAdvanceDeduction - other;
+    // Recalculate Net based on possible manual Advance / Other Allowance
+    // Net = Gross - Advance + Other
+    const net = stats.currentEarnings - finalAdvanceDeduction + other;
     const totalDue = net + prevPending;
 
     // Update Advance Pending Logic
